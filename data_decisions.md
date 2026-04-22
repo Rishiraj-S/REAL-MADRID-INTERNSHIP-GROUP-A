@@ -252,11 +252,3 @@ another. Summing or averaging them would hide this asymmetry.
    ACWR is used here as a decision-support signal, not a diagnostic tool.
 
 ---
-
-## Version history
-
-| Date | Change |
-|---|---|
-| YYYY-MM-DD | Initial data cleaning: 50333, 42978, 86086, 93116, 60819, 89091 excluded; 15795 metadata nulled; 94884 total_distance NaN'd |
-| YYYY-MM-DD | Daily aggregation with pivoted exercise types |
-| YYYY-MM-DD | EWMA-ACWR computed for all players × all 3 metrics |

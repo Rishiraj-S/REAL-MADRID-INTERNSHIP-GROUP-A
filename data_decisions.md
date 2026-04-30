@@ -133,20 +133,24 @@ club HR system.
   and `velocity_band6plus7_total_distance = 23.47` are normal for a match
 - Physiologically impossible (a professional match is typically 10–12 km)
 
-**Decision:** Set `total_distance` to NaN for this row. Retain the row and the
-other two load metrics.
+**Decision:** Replace `total_distance` with player 94884's **median match
+distance** (1,461.14 m), computed from all other matches excluding the outlier.
+Retain the row and the other two load metrics unchanged.
 
 **Alternatives considered:**
-- Imputing the player's median match distance: rejected — invents a specific
-  value the model and coaches would treat as real, hiding uncertainty in a
-  decision-support tool
+- Setting to NaN: preserves uncertainty honestly but propagates NaN into the
+  daily aggregation and EWMA, forcing downstream code to handle a missing value
+  on an otherwise complete row. Adds complexity for marginal benefit given the
+  evidence strongly points to a single-field export error.
 - Dropping the row: rejected — loses the information that the player played a
-  match on this date, and the other two metrics are valid
+  match on this date, and the other two metrics are valid.
 
 **Rationale:** The selective corruption of one metric (not all three) indicates
-a parsing / export error on a single value, not a sensor malfunction. Setting
-that one value to NaN preserves all valid information and propagates "unknown"
-honestly downstream.
+a parsing / export error on a single field, not a sensor malfunction. The
+player's own match-distance distribution is unimodal and well-behaved; the
+median is a defensible, robust substitute. Imputing from the player's own
+empirical distribution is preferable to leaving a structural gap in the EWMA
+series.
 
 **[OPEN]** Can the raw value be recovered from the source GPS system?
 
@@ -158,16 +162,21 @@ honestly downstream.
 
 **Decision:** Aggregate row-level periods to one row per `(player_id, date)`.
 
-- Load metrics: **summed** across periods on the same day
-- Exercise types: preserved via **pivot** — columns `count_G`, `count_TAC`, etc.
-- Per-type loads also preserved: `td_G`, `td_TAC`, etc.
+- Load metrics: **summed** across periods → `total_distance`, `acc_total`,
+  `vel_total` (renamed from the raw column names for brevity)
+- Exercise type composition: preserved as a **frozenset** column
+  `exercise_types` (e.g., `{'G', 'TAC', 'BP'}`). Individual drill IDs are
+  dropped; per-type pivot columns (`count_G`, `td_G`, …) are not retained —
+  the frozenset is compact and directly queryable for session template matching.
 - Static metadata (position, height, weight, DOB): `first` (does not vary
   within a player)
 
 **Rationale:** ACWR is computed on daily load. Daily aggregation is the correct
-unit. Pivoting exercise types rather than dropping them preserves session
-composition information for the model, which will be asked to predict load
-given a *planned* session composition.
+unit. The frozenset captures session composition without the sparsity of wide
+pivot columns, and session templates (e.g., `G+TAC`, `BP+G+TAC`) are readable
+directly from the set. The most common non-match session templates observed in
+the data: `G+TAC` (338 days), `BP+G` (159), `BP+G+TAC` (150), `G` (118),
+`TAC` (93), `BP+G+TEC` (88).
 
 ### Full calendar grid with zero-filled rest days
 
@@ -184,7 +193,33 @@ given a *planned* session composition.
 - Starting at first observed session avoids fabricating rest history before the
   player entered the dataset
 
-**Resulting grid:** 8,872 rows; 76.1% rest days (2,119 active days).
+**Resulting grid:** 8,872 rows; 76.1% rest days (6,753 rest / 2,119 active); 27
+columns after ACWR computation. Additional derived columns on the grid:
+
+- `is_rest` (int, 0/1) — rest-day flag
+- `rest_streak` (int) — consecutive rest-day counter per player; resets to 0
+  on active days
+- `activity_rate` (float) — active days / grid days per player
+- `is_modelable` (bool) — see below
+
+### Player modelability flag
+
+**Decision:** Flag each player `is_modelable = True` if they have ≥ 28 active
+days in the grid; False otherwise.
+
+**Threshold:** 28 days — the EWMA warm-up window. A player who never exits
+the warm-up period cannot produce a valid ACWR data point. **20 of 29 players**
+meet this threshold. The 9 non-modelable players have 3–21 active days and
+appear to be Castilla call-ups, short-term signings, or players with data
+capture gaps.
+
+**Rationale:** The model is trained only on modelable players. Non-modelable
+players will require a position-based fallback at inference time (see
+**[OPEN]** items). The `is_modelable` column is propagated to the full grid so
+downstream code can filter with a single predicate.
+
+**[OPEN]** Confirm the position-based fallback strategy with supervisor before
+modelling begins.
 
 ---
 

@@ -51,10 +51,10 @@ Training categories (extracted from `period_name` prefix): **G** (game-based/SSG
 
 | Step | Description |
 |---|---|
-| Row-level cleaning | Type coercion, outlier review, trialist/placeholder-metadata player exclusion |
-| Daily aggregation | One row per player-day; loads summed, exercise-type composition preserved via pivot |
-| Full calendar grid | Zero-filled rest days, common end date across players |
-| ACWR computation | EWMA (Williams et al., 2017) with λ_acute = 2/8, λ_chronic = 2/29; computed independently for all three load metrics |
+| Row-level cleaning | Type coercion, outlier treatment (player 94884 `total_distance` replaced with player median), trialist/placeholder-metadata player exclusion |
+| Daily aggregation | One row per player-day; loads summed → `total_distance`, `acc_total`, `vel_total`; exercise-type composition stored as `frozenset` column |
+| Full calendar grid | Zero-filled rest days, `is_rest` + `rest_streak` flags, `is_modelable` flag (≥28 active days); common end date across players |
+| ACWR computation | EWMA (Williams et al., 2017) with λ_acute = 2/(7+1) = 0.25, λ_chronic = 2/(28+1) ≈ 0.069; warmup-masked for first 28 days; computed independently for all three load metrics |
 | Predictive model | ML model(s) predicting daily load from planned session composition and player history; ACWR derived from predicted loads |
 | Model validation | Time-series cross-validation; evaluated using RMSE, MAE, and R² per metric |
 
@@ -96,9 +96,11 @@ A deployable, user-friendly application that allows the technical team to:
 ## Current Status
 
 - [x] Data exploration and cleaning complete (see `docs/data_decisions.md`)
-- [x] Daily aggregation and full-calendar grid built
+- [x] Daily aggregation and full-calendar grid built (8,872 rows; 29 players; 76.1% rest days)
+- [x] `is_modelable` flag computed — 20 of 29 players have ≥ 28 active days
 - [x] EWMA-ACWR computed for all players × all load metrics, with unit tests
 - [x] Pipeline validated via player-level trajectory plots
+- [x] Modular pipeline code in `data_engineering.py` (orchestrated via `run_pipeline()`)
 - [ ] Load prediction model
 - [ ] 15-day simulation (roll-forward prediction of future ACWR)
 - [ ] Interactive visualization app
@@ -139,6 +141,8 @@ By end of Week 2, the team must submit a document containing:
 ├── app/                   # Interactive visualization application
 ├── docs/                  # Technical documentation
 │   └── data_decisions.md  # Data cleaning & processing decision log
+├── data_engineering.py    # End-to-end pipeline (load → clean → aggregate → ACWR)
+├── test_notebook.ipynb    # EDA and step-by-step pipeline walkthrough
 └── README.md
 ```
 

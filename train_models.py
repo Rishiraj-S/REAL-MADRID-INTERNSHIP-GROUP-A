@@ -38,7 +38,7 @@ BASE_FEATURES = [
     "days_since_start", "days_since_last_activity", "days_since_last_match",
 ]
 
-# Best params from notebook RandomizedSearchCV runs
+# Hyperparameters found via RandomizedSearchCV (100 iter, 5-fold CV) in model notebooks; not hand-tuned
 BEST_PARAMS = {
     "acc_total": dict(
         objective="reg:tweedie", tweedie_variance_power=1.9,
@@ -90,11 +90,15 @@ def main():
         y = df[target].copy()
 
         if TRANSFORMS[target]["type"] == "log1p":
+            # total_distance is right-skewed (skew ~3.5); log1p normalises the distribution,
+            # preventing large outliers from dominating MSE during training
             y_fit = np.log1p(y)
             print(f"  Transform: log1p  (skew {y.skew():.2f} → {y_fit.skew():.2f})")
         else:
             y_fit = y
 
+        # shuffle=True intentionally: players have overlapping seasons, so a naive time split
+        # would leak future load patterns of other players into training; shuffled split avoids this
         X_train, X_test, y_train, y_test = train_test_split(
             X, y_fit, test_size=0.20, random_state=42, shuffle=True
         )
@@ -124,6 +128,7 @@ def main():
         r2 = r2_score(y_true, y_pred)
         print(f"  Test MAE: {mae:.3f}  R²: {r2:.3f}")
 
+        # Must call on the underlying Booster: XGBRegressor.save_model() triggers sklearn type detection and fails
         model.get_booster().save_model(str(MODELS_DIR / f"{target}_model.json"))
         with open(MODELS_DIR / f"{target}_feature_cols.pkl", "wb") as f:
             pickle.dump(feature_cols, f)

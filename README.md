@@ -1,7 +1,7 @@
 # Prediction of Acute vs Chronic Workload Ratio for Players
 
 **Client:** Departamento de Data del Club (Club Data Department)  
-**Team:** Group A  
+**Team:** Group A — trAIn Labs  
 **Date:** March 2026  
 **License:** Apache License 2.0
 
@@ -9,7 +9,7 @@
 
 ## Overview
 
-This repository contains the end-to-end solution developed by Group A for the Real Madrid internship project. The goal is to design, build, and deliver a **prediction and visualization tool for the Acute vs Chronic Workload Ratio (ACWR)** for football players — a key indicator for assessing injury risk and optimizing athletic performance.
+This repository contains the end-to-end solution developed by Group A for the Real Madrid internship project. The goal is to design, build, and deliver a **prediction and visualisation tool for the Acute vs Chronic Workload Ratio (ACWR)** for football players — a key indicator for assessing injury risk and optimising athletic performance.
 
 The ACWR compares an athlete's recent workload (acute, ~7 days) against their longer-term workload (chronic, ~28 days). Values outside a safe range signal elevated injury risk. This tool enables fitness coaches and technical staff to make data-driven training decisions without writing code or querying databases directly.
 
@@ -32,7 +32,7 @@ Currently, training is planned based on experience and recent metric values alon
 
 ### 1. Data
 
-Input data is provided as a single CSV containing one row per training period (drill/block within a session) over the 2024–25 season, with the following key fields:
+Input data is a single CSV containing one row per training period (drill/block within a session) over the 2024–25 season:
 
 | Field | Description |
 |---|---|
@@ -43,56 +43,118 @@ Input data is provided as a single CSV containing one row per training period (d
 | `acc_band7plus_total_effort_count` | External load: high-intensity accelerations (count) |
 | `velocity_band6plus7_total_distance` | External load: high-speed running (metres) |
 
-Training categories (extracted from `period_name` prefix): **G** (game-based/SSG), **TAC** (tactical), **BP** (set pieces), **TEC** (technical), **MATCH** (official).
+Training categories extracted from `period_name` prefix:
+
+| Code | Description |
+|---|---|
+| **G** | Game-based / Small-Sided Game |
+| **TAC** | Tactical |
+| **BP** | Set Pieces |
+| **TEC** | Technical |
+| **MATCH** | Official Match |
 
 ### 2. Data Pipeline (`notebooks/data_pipeline.ipynb`)
 
-| Step | Description |
+| Step | Output |
 |---|---|
-| Row-level cleaning | Type coercion, outlier treatment (player 94884 `total_distance` replaced with player median), trialist/placeholder-metadata player exclusion |
-| Daily aggregation | One row per player-day; loads summed → `total_distance`, `acc_total`, `vel_total` |
+| Raw load & type coercion | Cleaned `df` (3,802 rows, 28 players) |
+| Outlier treatment | Player 94884 `total_distance` replaced with player median; `weight=200` players dropped |
+| Daily aggregation | `daily` — one row per `(player_id, date)`, loads summed |
 | Feature engineering | Session flags (`has_G`, `has_TAC`, …), position one-hots, calendar features, activity history |
-| Persist | `data/processed/model_data.parquet` — the input consumed by model training and the app |
+| Persist | `data/processed/model_data.parquet` |
 
-### 3. Load Prediction Models
+### 3. Load Prediction Models (`train_models.py`)
 
-Three independent XGBoost models, one per load metric, trained via `train_models.py`:
+Three independent XGBoost models — one per load metric — trained via `train_models.py`. Hyperparameters were found via RandomizedSearchCV (100 iterations, 5-fold CV) in the model notebooks.
 
-| Model | Loss | Test MAE | Test R² |
-|---|---|---|---|
-| `acc_total` | Tweedie | ≈ 3.63 efforts | ≈ 0.38 |
-| `total_distance` | log-MSE | ≈ 800 m | ≈ 0.43 |
-| `vel_total` | Raw MSE | ≈ 18.3 m | ≈ 0.16 |
+| Target | Loss | Test MAE | Test R² | Notes |
+|---|---|---|---|---|
+| `total_distance` | log-MSE | ≈ 800 m | ≈ 0.43 | log1p transform; right-skewed distribution |
+| `acc_total` | Tweedie (p=1.9) | ≈ 3.63 efforts | ≈ 0.38 | Count data; Tweedie handles zero-inflation |
+| `vel_total` | Raw MSE | ≈ 18.3 m | ≈ 0.16 | SHAP feature selection applied (Round 2) |
 
-Models are saved as XGBoost native JSON to avoid sklearn/scipy version conflicts across environments.
+**Feature vector (45 features):**
+- 17 base features: anthropometrics, session type flags, position one-hots, calendar/activity history
+- 28 `pid_*` player one-hot columns (one per squad member)
 
-### 4. Interactive Visualization App (`app.py`)
+Models are saved as **XGBoost native JSON** (`{target}_model.json`) — not sklearn Pipeline pickle — to avoid scipy binary incompatibilities across conda environments.
 
-A Streamlit application with three pages:
+### 4. ACWR Utilities (`utils/acwr.py`)
 
-- **Dashboard** — current ACWR status for all 28 squad players across all three load metrics, with risk zone flags
-- **Session Planner** — coaches select session types (G / TAC / BP / TEC / MATCH / REST) for each of 15 upcoming days
-- **Forecast Results** — predicted 15-day ACWR trajectory per player, interactive Plotly chart, day-15 summary table with risk zones
+Core EWMA computation library:
 
-```bash
-streamlit run app.py
-```
+| Function | Description |
+|---|---|
+| `compute_acwr(daily_loads)` | EWMA-ACWR for a single player's load series |
+| `compute_acwr_with_forecast(hist, fore)` | Stitches historical + forecast loads, returns full ACWR series with `is_forecast` flag |
+| `classify_acwr_zone(value)` | Maps ACWR value to risk zone string |
+
+**EWMA parameters:**
+- Acute: α = 2/(7+1) = 0.250
+- Chronic: α = 2/(28+1) ≈ 0.069
+- Warmup mask: first 28 days masked as NaN (chronic not yet stable)
+
+### 5. Interactive Application (`app.py`)
+
+A Streamlit single-file application with three pages:
+
+| Page | Description |
+|---|---|
+| **Dashboard** | Current ACWR status for all 28 squad players across all three load metrics, with risk zone flags and stat summary cards |
+| **Session Planner** | Coaches select session types (G / TAC / BP / TEC / MATCH / REST) for each of 15 upcoming days via an interactive grid editor |
+| **Forecast Results** | 15-day ACWR trajectory per player with three stacked Plotly charts (one per metric), a session calendar view, injury risk alerts, and a day-15 summary table |
+
+**Key functions:**
+
+| Function | Description |
+|---|---|
+| `load_models()` | `@st.cache_resource` — loads all three XGBoost Boosters from JSON |
+| `load_player_data()` | `@st.cache_resource` — builds complete daily calendar grids and computes current ACWR per player |
+| `build_forecast(plan_days)` | Roll-forward 15-day inference loop — predicts loads then feeds them into EWMA to compute future ACWR |
+| `build_acwr_chart(mdata, meta)` | Returns Plotly figure with zone bands, threshold lines, and dual historical/forecast traces |
+
+**Navigation** uses `st.radio` with a `_pending_nav` intermediary to allow programmatic page switching (e.g. after forecast completes) without hitting Streamlit's widget ownership lock.
+
+---
+
+## ACWR Risk Zones
+
+| Zone | ACWR Range | Interpretation |
+|---|---|---|
+| Undertraining | < 0.8 | Insufficient load stimulus |
+| Optimal | 0.8 – 1.3 | Safe training range |
+| Caution | 1.3 – 1.5 | Elevated risk — monitor closely |
+| Danger | ≥ 1.5 | High injury risk — reduce load |
 
 ---
 
 ## Running the Project
 
 ```bash
-# Step 1 — Data pipeline (requires raw CSV)
+# Step 1 — Run data pipeline once (requires raw CSV at data/data_acute_vs_chronic.csv)
 jupyter nbconvert --to notebook --execute notebooks/data_pipeline.ipynb
 
-# Step 2 — Train models
+# Step 2 — Train all three XGBoost models
 python train_models.py
 
-# Step 3 — Launch app
+# Step 3 — Launch the Streamlit app
 streamlit run app.py
-# or, if using a specific conda env:
+
+# Alternative — using a specific conda environment
 conda run -n <env> streamlit run app.py
+```
+
+### Dependencies
+
+```
+pandas>=2.2, numpy>=1.26, pyarrow>=14.0
+xgboost>=2.0, scipy>=1.11
+plotly>=5.18, streamlit>=1.40
+```
+
+Install via:
+```bash
+pip install -r requirements.txt
 ```
 
 ---
@@ -101,35 +163,49 @@ conda run -n <env> streamlit run app.py
 
 ```
 .
-├── app.py                             # Streamlit application (3 pages)
-├── train_models.py                    # Model training script
-├── requirements.txt                   # Python dependencies
+├── app.py                              # Streamlit application (3 pages)
+├── train_models.py                     # Model training script
+├── requirements.txt                    # Python dependencies
+├── data_decisions.md                   # Cleaning & methodology decision log
+│
 ├── data/
-│   ├── data_acute_vs_chronic.csv      # Raw input (gitignored)
+│   ├── data_acute_vs_chronic.csv       # Raw input (gitignored)
 │   └── processed/
-│       └── model_data.parquet         # Feature-engineered pipeline output
+│       └── model_data.parquet          # Feature-engineered pipeline output
+│
 ├── models/
-│   ├── README.md
-│   ├── {target}_model.json            # XGBoost Booster (native format)
-│   ├── {target}_feature_cols.pkl      # Ordered feature name list
-│   └── {target}_transform.pkl         # Inverse-transform metadata
+│   ├── {target}_model.json             # XGBoost Booster — native JSON format
+│   ├── {target}_feature_cols.pkl       # Ordered list of 45 feature names
+│   └── {target}_transform.pkl          # Inverse-transform metadata (log1p or none)
+│
 ├── notebooks/
-│   ├── README.md
-│   ├── data_pipeline.ipynb            # Data engineering → model_data.parquet
-│   ├── acc_total.ipynb                # Acceleration count model
-│   ├── total_distance.ipynb           # Running distance model
-│   └── vel_total.ipynb                # High-speed running model (SHAP selection)
+│   ├── data_pipeline.ipynb             # Data engineering → model_data.parquet
+│   ├── acc_total.ipynb                 # EDA + model exploration (accelerations)
+│   ├── total_distance.ipynb            # EDA + model exploration (running distance)
+│   └── vel_total.ipynb                 # EDA + model (high-speed running; 2-round SHAP)
+│
 ├── utils/
-│   └── acwr.py                        # EWMA-ACWR computation utilities
-├── static/
-│   └── img/
-│       └── Real-Madrid-CF-v2002.svg   # Club logo (Streamlit sidebar)
-└── data_decisions.md                  # Cleaning & methodology decision log
+│   └── acwr.py                         # EWMA-ACWR computation utilities
+│
+└── static/
+    └── img/
+        ├── Real-Madrid-CF-v2002.svg    # Club logo (sidebar)
+        └── trAIn_labs.png              # Team logo (sidebar footer)
 ```
 
 ---
 
-## Current Status
+## Key Data Facts
+
+- **Granularity shift:** raw data is one row per *drill period*; pipeline aggregates to one row per *player-day*
+- **28 players** tracked across the 2024/25 season; **18** have ≥ 50 active days (used for modelling)
+- **Three load metrics** are independent: Pearson r ≈ 0.48 (distance↔velocity), 0.22 (velocity↔acc), 0.19 (distance↔acc)
+- **Feature count:** 45 = 17 base + 28 player one-hots
+- **model_data.parquet** columns: `player_id`, `height`, `weight`, `age`, `total_distance`, `acc_total`, `vel_total`, `has_G`, `has_TAC`, `has_BP`, `has_TEC`, `has_MATCH`, `n_session_types`, `pos_*` (5), `days_since_start`, `days_since_last_activity`, `days_since_last_match`
+
+---
+
+## Project Status
 
 - [x] Data exploration and cleaning complete (see `data_decisions.md`)
 - [x] Daily aggregation and full-calendar grid built (2,103 active rows; 28 players)
@@ -139,6 +215,7 @@ conda run -n <env> streamlit run app.py
 - [x] SHAP interpretability analysis complete for all three models
 - [x] 15-day roll-forward ACWR simulation (`build_forecast` in `app.py`)
 - [x] Interactive Streamlit application (`app.py`) — Dashboard, Planner, Forecast Results
+- [x] Professional UI with Real Madrid branding (RM official colours, club logo, team logo)
 - [ ] Final documentation and presentation
 
 ---
@@ -149,7 +226,7 @@ conda run -n <env> streamlit run app.py
 |---|---|
 | 1–2 | Data exploration, approach definition, work plan submission |
 | 3–4 | Data preparation pipeline and initial model development |
-| 5–6 | Model validation, iteration, and visualization design |
+| 5–6 | Model validation, iteration, and visualisation design |
 | 7 | App finalisation, documentation, and pre-delivery review |
 | 8 | Final presentation and live demo delivery |
 
@@ -161,7 +238,7 @@ conda run -n <env> streamlit run app.py
 |---|---|---|---|
 | 1 | End of Week 2 | 45 min | Validate approach and data understanding |
 | 2 | End of Week 4 | 60 min | Review pipeline and model validation |
-| 3 | End of Week 6 | 60 min | Feedback on visualization and what-if design |
+| 3 | End of Week 6 | 60 min | Feedback on visualisation and what-if design |
 | 4 | End of Week 7 | 45 min | Pre-delivery review and presentation rehearsal |
 
 ---

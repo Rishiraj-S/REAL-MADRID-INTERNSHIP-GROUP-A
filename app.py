@@ -33,9 +33,11 @@ MODELS_DIR    = REPO_ROOT / "models"
 LOGO_PATH     = REPO_ROOT / "static" / "img" / "Real-Madrid-CF-v2002.svg"
 SEASON_START  = pd.Timestamp("2024-07-15")
 TARGETS       = ["total_distance", "acc_total", "vel_total"]
+# Ordered to match has_* columns in model_data.parquet; changing order breaks feature alignment
 SESSION_TYPES = ["G", "TAC", "BP", "TEC", "MATCH"]
 PAGES         = ["Dashboard", "Plan Sessions", "Forecast Results"]
 
+# Colors map to Real Madrid's official palette: navy (#00529F), gold (#FEBE10), red (#EE324E)
 TARGET_META = {
     "total_distance": {"label": "Total Distance",     "unit": "m",      "color": "#00529F", "fill": "rgba(0,82,159,0.12)"},
     "acc_total":      {"label": "Accelerations",      "unit": "efforts", "color": "#FEBE10", "fill": "rgba(254,190,16,0.12)"},
@@ -55,6 +57,7 @@ ZONE_LABELS = {
     "undertraining": "Under", "optimal": "Optimal",
     "caution": "Caution", "danger": "Danger", "unknown": "—",
 }
+# Caution/danger bands use slightly higher opacity (0.22) than others to draw the eye to risk zones
 ZONE_BANDS = [
     {"y0": 0,   "y1": 0.8, "color": "rgba(100,116,139,0.18)"},
     {"y0": 0.8, "y1": 1.3, "color": "rgba(16,185,129,0.18)"},
@@ -367,6 +370,10 @@ hr { border-color: #E2EBF6 !important; margin: 1.5rem 0 !important; }
 
 
 # ── Resolve pending navigation BEFORE sidebar renders ────────────────────────
+# Must run before the radio widget renders: Streamlit raises StreamlitAPIException
+# if you set a widget's session_state key after that widget has already rendered
+# in the same script run. We stage the target page in _pending_nav, then apply
+# it here at the very top so the radio picks up the correct value on re-render.
 if "_pending_nav" in st.session_state:
     st.session_state.nav_page = st.session_state.pop("_pending_nav")
 elif "nav_page" not in st.session_state:
@@ -382,6 +389,8 @@ def load_models():
         tp = MODELS_DIR / f"{t}_transform.pkl"
         if not mp.exists():
             continue
+        # xgb.Booster().load_model() avoids sklearn Pipeline pickle, which triggers
+        # scipy binary incompatibilities when conda environments differ between training and serving
         model = xgb.Booster()
         model.load_model(str(mp))
         with open(fp, "rb") as f:
@@ -403,6 +412,8 @@ def load_player_data():
     for pid, grp in df.groupby("player_id"):
         grp = grp.sort_values("date").reset_index(drop=True)
         dr = pd.date_range(grp["date"].min(), grp["date"].max(), freq="D")
+        # Left-merge creates a complete daily calendar grid; fillna(0) ensures rest days carry
+        # zero load rather than NaN — EWMA accumulates over every calendar day, so gaps must be 0
         merged = pd.DataFrame({"date": dr}).merge(
             grp[["date", "total_distance", "acc_total", "vel_total", "has_MATCH"]],
             on="date", how="left",
@@ -466,12 +477,15 @@ def build_forecast(plan_days):
             "pos_full_back":           int(profile["pos_full_back"]),
             "pos_winger":              int(profile["pos_winger"]),
         }
+        # All 28 players must appear as pid_ columns even for rest-day rows; model expects a fixed 45-feature vector
         pid_feats = {f"pid_{p}": int(p == pid) for p in all_pids}
 
         last_dss    = int(profile["days_since_start"])
         last_active = pdata["last_active"]
         last_match  = pdata["last_match"]
 
+        # Track offsets relative to the forecast window start rather than absolute dates
+        # so days_since_last_activity/match stay valid across the 15-day roll-forward
         prev_active_d = 0
         prev_match_d  = (
             -int((last_active - last_match).days)
@@ -482,7 +496,7 @@ def build_forecast(plan_days):
         forecast_loads = {m: [] for m in TARGETS}
 
         for d, day in enumerate(plan_days, start=1):
-            dsla = min(d - prev_active_d, 21)
+            dsla = min(d - prev_active_d, 21)  # capped at 21 to match training distribution; extrapolating beyond degrades predictions
             dslm = min(d - prev_match_d, 21)
 
             if day["is_rest"]:
@@ -587,6 +601,7 @@ def build_acwr_chart(mdata: dict, meta: dict) -> go.Figure:
             xanchor="left", yanchor="top",
         )
 
+    # Extend historical trace by one forecast point so the two lines visually join at the boundary
     join_x = hist_x + ([fore_x[0]] if fore_x else [])
     join_y = hist_y + ([fore_y[0]] if fore_y else [])
     fig.add_trace(go.Scatter(
@@ -810,7 +825,7 @@ def page_planner():
             st.session_state.forecast   = results
             st.session_state.plan_days  = plan_days
             st.session_state.plan_dates = plan_dates
-            st.session_state._pending_nav = PAGES[2]
+            st.session_state._pending_nav = PAGES[2]  # stage nav change; resolved at script top before radio renders
             st.rerun()
         else:
             st.error("Forecast failed — check models are trained (`python train_models.py`).")
@@ -953,7 +968,7 @@ def page_results():
     with c2:
         st.markdown("<div style='margin-top:1.65rem'></div>", unsafe_allow_html=True)
         if st.button("← Adjust Plan", type="secondary", use_container_width=True):
-            st.session_state._pending_nav = PAGES[1]
+            st.session_state._pending_nav = PAGES[1]  # stage nav change; resolved at script top before radio renders
             st.rerun()
 
     # Three charts stacked

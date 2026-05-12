@@ -5,9 +5,7 @@ Run with: streamlit run app.py
 
 import base64
 import pickle
-import sys
 import warnings
-from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -15,22 +13,21 @@ import plotly.graph_objects as go
 import streamlit as st
 import xgboost as xgb
 
+from real_madrid_acwr.acwr import classify_acwr_zone, compute_acwr, compute_acwr_with_forecast
+from real_madrid_acwr.config import DATA_DIR, MODEL_ARTIFACTS_DIR, STATIC_DIR
+
+LOGO_PATH = STATIC_DIR / "img" / "Real-Madrid-CF-v2002.svg"
+
 st.set_page_config(
     page_title="Real Madrid · ACWR Monitor",
-    page_icon=str(Path(__file__).parent / "static" / "img" / "Real-Madrid-CF-v2002.svg"),
+    page_icon=str(LOGO_PATH),
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
 warnings.filterwarnings("ignore")
-sys.path.insert(0, str(Path(__file__).parent))
-from utils.acwr import compute_acwr, compute_acwr_with_forecast, classify_acwr_zone
 
 # ── Constants ─────────────────────────────────────────────────────────────────
-REPO_ROOT     = Path(__file__).parent
-DATA_DIR      = REPO_ROOT / "data"
-MODELS_DIR    = REPO_ROOT / "models"
-LOGO_PATH     = REPO_ROOT / "static" / "img" / "Real-Madrid-CF-v2002.svg"
 SEASON_START  = pd.Timestamp("2024-07-15")
 TARGETS       = ["total_distance", "acc_total", "vel_total"]
 # Ordered to match has_* columns in model_data.parquet; changing order breaks feature alignment
@@ -384,9 +381,10 @@ elif "nav_page" not in st.session_state:
 def load_models():
     models = {}
     for t in TARGETS:
-        mp = MODELS_DIR / f"{t}_model.json"
-        fp = MODELS_DIR / f"{t}_feature_cols.pkl"
-        tp = MODELS_DIR / f"{t}_transform.pkl"
+        artifact_dir = MODEL_ARTIFACTS_DIR / t
+        mp = artifact_dir / "model.json"
+        fp = artifact_dir / "feature_cols.pkl"
+        tp = artifact_dir / "transform.pkl"
         if not mp.exists():
             continue
         # xgb.Booster().load_model() avoids sklearn Pipeline pickle, which triggers
@@ -893,7 +891,7 @@ def page_results():
                 is_match = "MATCH" in types
 
                 bg = "#FFF8F8" if is_match else ("#F8FAFD" if is_rest else "#FFFFFF")
-                border_top = f"3px solid #EE324E" if is_match else ("3px solid #E2EBF6" if is_rest else "3px solid #FEBE10")
+                border_top = "3px solid #EE324E" if is_match else ("3px solid #E2EBF6" if is_rest else "3px solid #FEBE10")
 
                 badges = ""
                 if is_rest:
@@ -1067,7 +1065,7 @@ with st.sidebar:
     </div>""", unsafe_allow_html=True)
 
     # Developed by footer
-    _team_logo_path = REPO_ROOT / "static" / "img" / "trAIn_labs.png"
+    _team_logo_path = STATIC_DIR / "img" / "trAIn_labs.png"
     _team_b64 = ""
     if _team_logo_path.exists():
         _team_b64 = base64.b64encode(_team_logo_path.read_bytes()).decode()

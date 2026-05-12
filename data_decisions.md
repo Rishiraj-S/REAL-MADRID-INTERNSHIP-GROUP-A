@@ -9,7 +9,8 @@ marked with **[OPEN]**.
 
 ## Dataset overview
 
-- **Source:** `data_acute_vs_chronic.csv`
+- **Source:** `data/data_acute_vs_chronic.zip`, extracted locally to
+  `data/raw/data_acute_vs_chronic.csv`
 - **Initial shape:** 3,903 rows × 13 columns
 - **Granularity:** one row per training *period* (drill/block within a session)
 - **Date range:** 2024-07-16 to 2025-06-26 (345 days, one full season)

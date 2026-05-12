@@ -4,7 +4,6 @@ Run with: streamlit run app.py
 """
 
 import base64
-import pickle
 import warnings
 
 import numpy as np
@@ -14,7 +13,12 @@ import streamlit as st
 import xgboost as xgb
 
 from real_madrid_acwr.acwr import classify_acwr_zone, compute_acwr, compute_acwr_with_forecast
-from real_madrid_acwr.config import DATA_DIR, MODEL_ARTIFACTS_DIR, STATIC_DIR
+from real_madrid_acwr.config import DATA_DIR, STATIC_DIR
+from real_madrid_acwr.modeling.artifacts import (
+    TARGETS,
+    ArtifactLoadError,
+    load_model_artifacts,
+)
 
 LOGO_PATH = STATIC_DIR / "img" / "Real-Madrid-CF-v2002.svg"
 
@@ -29,7 +33,6 @@ warnings.filterwarnings("ignore")
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 SEASON_START  = pd.Timestamp("2024-07-15")
-TARGETS       = ["total_distance", "acc_total", "vel_total"]
 # Ordered to match has_* columns in model_data.parquet; changing order breaks feature alignment
 SESSION_TYPES = ["G", "TAC", "BP", "TEC", "MATCH"]
 PAGES         = ["Dashboard", "Plan Sessions", "Forecast Results"]
@@ -379,24 +382,16 @@ elif "nav_page" not in st.session_state:
 # ── Cached loaders ────────────────────────────────────────────────────────────
 @st.cache_resource
 def load_models():
-    models = {}
-    for t in TARGETS:
-        artifact_dir = MODEL_ARTIFACTS_DIR / t
-        mp = artifact_dir / "model.json"
-        fp = artifact_dir / "feature_cols.pkl"
-        tp = artifact_dir / "transform.pkl"
-        if not mp.exists():
-            continue
-        # xgb.Booster().load_model() avoids sklearn Pipeline pickle, which triggers
-        # scipy binary incompatibilities when conda environments differ between training and serving
-        model = xgb.Booster()
-        model.load_model(str(mp))
-        with open(fp, "rb") as f:
-            feats = pickle.load(f)
-        with open(tp, "rb") as f:
-            transform = pickle.load(f)
-        models[t] = {"model": model, "feature_cols": feats, "transform": transform}
-    return models
+    return load_model_artifacts()
+
+
+def get_models_or_stop():
+    try:
+        return load_models()
+    except ArtifactLoadError as exc:
+        st.error("Model artifacts are missing or invalid. Run `python train_models.py` to regenerate them.")
+        st.exception(exc)
+        st.stop()
 
 
 @st.cache_resource
@@ -452,10 +447,8 @@ def load_player_data():
 
 # ── Inference ─────────────────────────────────────────────────────────────────
 def build_forecast(plan_days):
-    models = load_models()
+    models = get_models_or_stop()
     player_data, all_pids, _ = load_player_data()
-    if not models:
-        return None
 
     HIST_SHOW = 60
     results   = {}
@@ -517,15 +510,15 @@ def build_forecast(plan_days):
             }
 
             for target, art in models.items():
-                fc   = art["feature_cols"]
+                fc   = art.feature_cols
                 feat = {c: 0 for c in fc}
                 feat.update(player_feats)
                 feat.update(sess)
                 feat.update(day_feats)
                 feat.update(pid_feats)
                 X   = pd.DataFrame([feat])[fc]
-                raw = float(art["model"].predict(xgb.DMatrix(X))[0])
-                if art["transform"]["type"] == "log1p":
+                raw = float(art.model.predict(xgb.DMatrix(X))[0])
+                if art.transform["type"] == "log1p":
                     raw = float(np.expm1(raw))
                 forecast_loads[target].append(max(0.0, raw))
 
@@ -648,7 +641,7 @@ def build_acwr_chart(mdata: dict, meta: dict) -> go.Figure:
 # ── Page: Dashboard ───────────────────────────────────────────────────────────
 def page_dashboard():
     player_data, all_pids, current_acwr = load_player_data()
-    models    = load_models()
+    get_models_or_stop()
     last_date = player_data[all_pids[0]]["last_active"].strftime("%d %B %Y")
 
     st.markdown(f"""
@@ -661,9 +654,6 @@ def page_dashboard():
             &nbsp;&middot;&nbsp; 3 load metrics
         </div>
     </div>""", unsafe_allow_html=True)
-
-    if len(models) < len(TARGETS):
-        st.warning("Some models missing — run `python train_models.py` to enable forecasting.")
 
     # Stat cards
     n_danger  = sum(1 for p in all_pids for m in TARGETS if current_acwr[p][m]["zone"] == "danger")

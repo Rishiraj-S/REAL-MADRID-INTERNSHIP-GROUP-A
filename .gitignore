@@ -1,0 +1,36 @@
+# macOS / IDE
+.DS_Store
+.idea/
+.vscode/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Virtual environments
+.venv/
+venv/
+env/
+.env
+.env.*
+
+# Jupyter
+.ipynb_checkpoints/
+*.nbconvert.ipynb
+
+# Local raw/private data
+data/raw/data_acute_vs_chronic.csv
+data/external/*
+data/interim/*
+!data/external/.gitkeep
+!data/interim/.gitkeep
+
+# Local generated notebook exports
+utils/data_pipeline.py

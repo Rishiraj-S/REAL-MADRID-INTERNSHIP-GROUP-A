@@ -63,9 +63,13 @@ Training categories extracted from `period_name` prefix:
 | Feature engineering | Session flags (`has_G`, `has_TAC`, …), position one-hots, calendar features, activity history |
 | Persist | `data/processed/model_data.parquet` |
 
-### 3. Load Prediction Models (`train_models.py`)
+### 3. Load Prediction Models (`src/real_madrid_acwr/modeling/train.py`)
 
-Three independent XGBoost models — one per load metric — trained via `train_models.py`. Hyperparameters were found via RandomizedSearchCV (100 iterations, 5-fold CV) in the model notebooks.
+Three independent XGBoost models — one per load metric — trained via the package
+training module. The root `train_models.py` file remains as a compatibility
+wrapper, so `python train_models.py` still works after the project is installed.
+Hyperparameters were found via RandomizedSearchCV (100 iterations, 5-fold CV)
+in the model notebooks.
 
 | Target | Loss | Test MAE | Test R² | Notes |
 |---|---|---|---|---|
@@ -77,9 +81,9 @@ Three independent XGBoost models — one per load metric — trained via `train_
 - 17 base features: anthropometrics, session type flags, position one-hots, calendar/activity history
 - 28 `pid_*` player one-hot columns (one per squad member)
 
-Models are saved as **XGBoost native JSON** (`{target}_model.json`) — not sklearn Pipeline pickle — to avoid scipy binary incompatibilities across conda environments.
+Models are saved as **XGBoost native JSON** under `models/xgboost/{target}/model.json` — not sklearn Pipeline pickle — to avoid scipy binary incompatibilities across conda environments.
 
-### 4. ACWR Utilities (`utils/acwr.py`)
+### 4. ACWR Utilities (`src/real_madrid_acwr/acwr.py`)
 
 Core EWMA computation library:
 
@@ -130,15 +134,34 @@ A Streamlit single-file application with three pages:
 
 ## Running the Project
 
+Install runtime and training dependencies:
+
 ```bash
-# Step 1 — Run data pipeline once (requires raw CSV at data/data_acute_vs_chronic.csv)
+# Create and activate a virtual environment
+python3 -m venv .venv
+source .venv/bin/activate
+
+# Install dependencies
+python -m pip install -e .
+```
+
+For development, install the package with its dev extra:
+
+```bash
+python -m pip install -e ".[dev]"
+```
+
+```bash
+# Step 1 — Run data pipeline once.
+# The notebook reads data/raw/data_acute_vs_chronic.csv,
+# extracting it from data/data_acute_vs_chronic.zip if needed.
 jupyter nbconvert --to notebook --execute notebooks/data_pipeline.ipynb
 
 # Step 2 — Train all three XGBoost models
-python train_models.py
+make train
 
 # Step 3 — Launch the Streamlit app
-streamlit run app.py
+make run
 
 # Alternative — using a specific conda environment
 conda run -n <env> streamlit run app.py
@@ -146,16 +169,25 @@ conda run -n <env> streamlit run app.py
 
 ### Dependencies
 
-```
-pandas>=2.2, numpy>=1.26, pyarrow>=14.0
-xgboost>=2.0, scipy>=1.11
-plotly>=5.18, streamlit>=1.40
+Dependencies are declared in `pyproject.toml`, which is the single dependency
+source for the project.
+
+Notebook exploration dependencies are available as a separate optional extra
+because they are heavier and are not needed for CI:
+
+```bash
+python -m pip install -e ".[notebooks]"
 ```
 
-Install via:
+### Quality Checks
+
+The repository uses `pytest`, `ruff`, and `mypy`, configured in `pyproject.toml`.
+
 ```bash
-pip install -r requirements.txt
+make quality
 ```
+
+GitHub Actions runs the same checks on pull requests and pushes to `main`.
 
 ---
 
@@ -164,19 +196,26 @@ pip install -r requirements.txt
 ```
 .
 ├── app.py                              # Streamlit application (3 pages)
-├── train_models.py                     # Model training script
-├── requirements.txt                    # Python dependencies
+├── train_models.py                     # Compatibility wrapper for model training
+├── Makefile                            # Common local commands
+├── pyproject.toml                      # Project metadata and tool configuration
 ├── data_decisions.md                   # Cleaning & methodology decision log
+├── tests/                              # Pytest suite for core contracts
 │
 ├── data/
-│   ├── data_acute_vs_chronic.csv       # Raw input (gitignored)
+│   ├── README.md                       # Data directory conventions
+│   ├── raw/                            # Immutable local raw data
+│   ├── external/                       # Local third-party data
+│   ├── interim/                        # Intermediate generated data
 │   └── processed/
 │       └── model_data.parquet          # Feature-engineered pipeline output
 │
 ├── models/
-│   ├── {target}_model.json             # XGBoost Booster — native JSON format
-│   ├── {target}_feature_cols.pkl       # Ordered list of 45 feature names
-│   └── {target}_transform.pkl          # Inverse-transform metadata (log1p or none)
+│   └── xgboost/
+│       └── {target}/
+│           ├── model.json              # XGBoost Booster — native JSON format
+│           ├── feature_cols.pkl        # Ordered list of 45 feature names
+│           └── transform.pkl           # Inverse-transform metadata
 │
 ├── notebooks/
 │   ├── data_pipeline.ipynb             # Data engineering → model_data.parquet
@@ -184,8 +223,26 @@ pip install -r requirements.txt
 │   ├── total_distance.ipynb            # EDA + model exploration (running distance)
 │   └── vel_total.ipynb                 # EDA + model (high-speed running; 2-round SHAP)
 │
+├── references/
+│   └── Tema1.prediction_acute_chronic.v1.english.pdf
+│
+├── reports/
+│   └── figures/
+│       ├── acc_total/
+│       ├── total_distance/
+│       └── vel_total/
+│
+├── src/
+│   └── real_madrid_acwr/
+│       ├── acwr.py                     # EWMA-ACWR computation utilities
+│       ├── data/                       # Dataset-building code namespace
+│       ├── features/                   # Feature engineering code namespace
+│       ├── modeling/
+│       │   └── train.py                # Model training implementation
+│       └── visualization/              # Visualization code namespace
+│
 ├── utils/
-│   └── acwr.py                         # EWMA-ACWR computation utilities
+│   └── acwr.py                         # Compatibility wrapper for older imports
 │
 └── static/
     └── img/

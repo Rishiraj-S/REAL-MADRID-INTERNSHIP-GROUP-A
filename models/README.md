@@ -1,81 +1,68 @@
 # models/
 
-Trained XGBoost models for daily load prediction — one model per load metric.
-All artifacts are auto-saved here when the corresponding notebook is run.
+Trained XGBoost artifacts for daily load prediction: one model per load metric.
+The app loads native XGBoost `Booster` JSON files at runtime, plus small pickle
+metadata files for feature ordering and inverse transforms.
 
----
+## Artifact contract
 
-## Artifacts
-
-### acc_total (high-intensity acceleration count)
-
-| File | Description |
-|---|---|
-| `acc_total_model.pkl` | Fitted `Pipeline(MinMaxScaler → XGBRegressor)`, Tweedie loss |
-| `acc_total_feature_cols.pkl` | List of 52 feature column names used at fit time |
-| `acc_total_transform.pkl` | `{"type": "none", "loss": "tweedie"}` — no inverse transform needed |
-| `acc_total_learning_curve.png` | Bias-variance diagnostic (train vs. CV MAE vs. dataset size) |
-
-**Test results:** MAE ≈ 3.63 · RMSE ≈ 5.00 · R² ≈ 0.38
-
----
-
-### total_distance (daily running distance, metres)
+Deployable artifacts live under `models/xgboost/<target>/`. Each target must
+have the full artifact triad:
 
 | File | Description |
 |---|---|
-| `total_distance_model.pkl` | Fitted `Pipeline(MinMaxScaler → XGBRegressor)`, log-MSE |
-| `total_distance_feature_cols.pkl` | List of 52 feature column names |
-| `total_distance_transform.pkl` | `{"type": "log1p", "inverse": "expm1"}` — apply `np.expm1` at inference |
-| `total_distance_learning_curve.png` | Bias-variance diagnostic |
+| `models/xgboost/{target}/model.json` | Native XGBoost `Booster` model used by the Streamlit app |
+| `models/xgboost/{target}/feature_cols.pkl` | Ordered list of 45 feature columns used at fit and inference time |
+| `models/xgboost/{target}/transform.pkl` | Transform metadata, either `{"type": "none", ...}` or `{"type": "log1p", "inverse": "expm1"}` |
 
-**Test results:** MAE ≈ 800 m · R² ≈ 0.42
+Current targets:
 
----
-
-### vel_total (high-speed running distance, metres)
-
-| File | Description |
-|---|---|
-| `vel_total_model.pkl` | Winner of full vs. SHAP-reduced feature set comparison |
-| `vel_total_feature_cols.pkl` | Feature column list (may be smaller than 52 if SHAP-reduced won) |
-| `vel_total_transform.pkl` | `{"type": "none", "loss": "mse"}` — predictions are in original units |
-| `vel_total_learning_curve.png` | Bias-variance diagnostic |
-| `vel_total_shap_cumulative.png` | SHAP cumulative importance plot (feature selection diagnostic) |
-
----
+| Target | Meaning | Transform | Notes |
+|---|---|---|---|
+| `acc_total` | High-intensity acceleration count | none | Tweedie objective |
+| `total_distance` | Daily running distance, metres | log1p | Apply `np.expm1` after prediction |
+| `vel_total` | High-speed running distance, metres | none | Raw MSE objective |
 
 ## Regenerating models
 
-```
-1. Run notebooks/data_pipeline.ipynb   →  writes data/processed/model_data.parquet
-2. Run notebooks/acc_total.ipynb       →  writes acc_total_*.pkl + acc_total_*.png
-3. Run notebooks/total_distance.ipynb  →  writes total_distance_*.pkl + *.png
-4. Run notebooks/vel_total.ipynb       →  writes vel_total_*.pkl + *.png
+```bash
+# 1. Build data/processed/model_data.parquet from the raw CSV
+jupyter nbconvert --to notebook --execute notebooks/data_pipeline.ipynb
+
+# 2. Train and save all three model artifact triads
+python train_models.py
 ```
 
-Steps 2–4 are independent of each other and can run in any order after step 1.
-
----
+The pipeline reads `data/raw/data_acute_vs_chronic.csv` and can extract it from
+the committed `data/data_acute_vs_chronic.zip` archive if needed.
 
 ## Loading a model at inference
 
 ```python
-import pickle, numpy as np
+import pickle
 from pathlib import Path
 
-MODELS_DIR = Path("models")
-TARGET = "acc_total"   # or "total_distance" / "vel_total"
+import numpy as np
+import xgboost as xgb
 
-model       = pickle.load(open(MODELS_DIR / f"{TARGET}_model.pkl",        "rb"))
-feature_cols = pickle.load(open(MODELS_DIR / f"{TARGET}_feature_cols.pkl", "rb"))
-transform   = pickle.load(open(MODELS_DIR / f"{TARGET}_transform.pkl",     "rb"))
+MODELS_DIR = Path("models") / "xgboost"
+TARGET = "acc_total"  # or "total_distance" / "vel_total"
+ARTIFACT_DIR = MODELS_DIR / TARGET
 
-preds = model.predict(X_new[feature_cols])
+model = xgb.Booster()
+model.load_model(str(ARTIFACT_DIR / "model.json"))
 
-# Apply inverse transform if needed (only total_distance uses log1p)
+with (ARTIFACT_DIR / "feature_cols.pkl").open("rb") as file:
+    feature_cols = pickle.load(file)
+
+with (ARTIFACT_DIR / "transform.pkl").open("rb") as file:
+    transform = pickle.load(file)
+
+dmatrix = xgb.DMatrix(X_new[feature_cols])
+preds = model.predict(dmatrix)
+
 if transform["type"] == "log1p":
     preds = np.expm1(preds)
 
-preds = np.clip(preds, 0, None)   # predictions are physically bounded at 0
+preds = np.clip(preds, 0, None)
 ```

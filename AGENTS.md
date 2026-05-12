@@ -60,17 +60,17 @@ python -m pip install -e ".[notebooks]"
 
 ```bash
 make quality      # ruff + mypy + pytest
-make run          # streamlit run app.py
+make run          # streamlit run main.py
 make train        # python train_models.py
 ```
 
 Equivalent direct commands:
 
 ```bash
-ruff check app.py train_models.py src tests utils
+ruff check main.py train_models.py src tests utils
 mypy
 pytest
-streamlit run app.py
+streamlit run main.py
 python train_models.py
 ```
 

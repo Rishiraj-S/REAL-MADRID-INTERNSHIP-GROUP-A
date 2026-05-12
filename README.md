@@ -164,7 +164,7 @@ make train
 make run
 
 # Alternative — using a specific conda environment
-conda run -n <env> streamlit run app.py
+conda run -n <env> streamlit run main.py
 ```
 
 ### Dependencies

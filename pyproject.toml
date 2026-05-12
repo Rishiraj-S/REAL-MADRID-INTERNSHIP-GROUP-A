@@ -63,7 +63,7 @@ ignore = [
 
 [tool.mypy]
 python_version = "3.11"
-files = ["src/real_madrid_acwr", "tests"]
+files = ["src/app", "src/real_madrid_acwr", "tests"]
 check_untyped_defs = true
 ignore_missing_imports = true
 no_implicit_optional = true

@@ -28,7 +28,7 @@ jobs:
           python -m pip install -e ".[dev]"
 
       - name: Ruff
-        run: ruff check app.py train_models.py src tests utils
+        run: ruff check main.py train_models.py src tests utils
 
       - name: Mypy
         run: mypy

@@ -48,7 +48,7 @@ def compute_acwr(
     Parameters
     ----------
     daily_loads : array-like, length n_days
-        One load value per calendar day. Rest days should be 0 (not NaN, not skipped).
+        One load value per calendar day. Rest days must be 0. Values are always ≥ 0.
         The series should be on a complete daily grid — no gaps.
     acute_window : int, default 7
         Acute EWMA window in days.
@@ -77,11 +77,6 @@ def compute_acwr(
         loads = pd.Series(daily_loads, dtype=float)
     
     # Validation
-    if loads.isna().any():
-        raise ValueError(
-            "daily_loads contains NaN. Rest days must be encoded as 0, not NaN. "
-            "Missing calendar days should be filled before calling compute_acwr."
-        )
     if (loads < 0).any():
         raise ValueError("daily_loads contains negative values; loads must be ≥ 0.")
     
@@ -153,7 +148,7 @@ def compute_acwr_for_all_players(
     
     for _, group in df.groupby(player_col, observed=True, sort=False):
         result = compute_acwr(
-            group[metric_col].to_numpy(dtype=float, na_value=np.nan),
+            group[metric_col].to_numpy(dtype=float),
             acute_window=acute_window,
             chronic_window=chronic_window,
             warmup_days=warmup_days,

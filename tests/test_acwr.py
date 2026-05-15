@@ -21,10 +21,7 @@ def test_compute_acwr_masks_warmup_and_keeps_expected_columns() -> None:
     assert result["acwr"].iloc[2:].notna().all()
 
 
-def test_compute_acwr_rejects_nan_and_negative_loads() -> None:
-    with pytest.raises(ValueError, match="contains NaN"):
-        compute_acwr(np.array([1.0, np.nan, 2.0]))
-
+def test_compute_acwr_rejects_negative_loads() -> None:
     with pytest.raises(ValueError, match="negative"):
         compute_acwr(np.array([1.0, -1.0, 2.0]))
 

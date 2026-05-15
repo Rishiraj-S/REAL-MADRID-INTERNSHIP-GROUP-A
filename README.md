@@ -142,19 +142,21 @@ python3 -m venv .venv
 source .venv/bin/activate
 
 # Install dependencies
-python -m pip install -e .
+make install
 ```
 
 For development, install the package with its dev extra:
 
 ```bash
-python -m pip install -e ".[dev]"
+make install-dev
 ```
 
 ```bash
 # Step 1 — Run data pipeline once.
 # The notebook reads data/raw/data_acute_vs_chronic.csv,
 # extracting it from data/data_acute_vs_chronic.zip if needed.
+make install-notebooks
+
 jupyter nbconvert --to notebook --execute notebooks/data_pipeline.ipynb
 
 # Step 2 — Train all three XGBoost models

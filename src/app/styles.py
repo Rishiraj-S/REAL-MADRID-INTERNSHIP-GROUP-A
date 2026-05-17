@@ -99,6 +99,9 @@ header[data-testid="stHeader"] { background: transparent !important; }
     box-shadow: 0 2px 10px rgba(0,60,140,0.07);
     padding: 1.25rem 1.5rem;
 }
+.planner-stat-card {
+    min-height: 122px;
+}
 .stat-val { font-size: 2.4rem; font-weight: 800; line-height: 1; margin-bottom: 6px; }
 .stat-lbl { font-size: 0.82rem; color: #64748B; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; }
 
@@ -201,6 +204,95 @@ header[data-testid="stHeader"] { background: transparent !important; }
 .metric-badge {
     font-size: 0.68rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.4px;
     padding: 2px 7px; border-radius: 6px; border: 1px solid;
+}
+
+/* Planner workspace */
+.planner-legend-pill {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: 54px;
+    border: 1px solid;
+    border-radius: 12px;
+    padding: 0.65rem 0.85rem;
+    font-size: 0.74rem;
+    font-weight: 800;
+    letter-spacing: 0.3px;
+    text-align: center;
+}
+.planner-legend-dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 999px;
+    flex-shrink: 0;
+}
+.planner-hint {
+    background: rgba(0,82,159,0.06);
+    border: 1px solid rgba(0,82,159,0.12);
+    border-radius: 10px;
+    padding: 0.8rem 0.95rem;
+    color: #334D6E;
+    font-size: 0.86rem;
+    line-height: 1.45;
+}
+.planner-side-copy {
+    color: #334D6E;
+    font-size: 0.9rem;
+    line-height: 1.6;
+}
+.planner-event-card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+.planner-event-title {
+    color: #0F172A;
+    font-size: 0.98rem;
+    font-weight: 800;
+    line-height: 1.3;
+}
+.planner-event-meta,
+.planner-event-location {
+    color: #64748B;
+    font-size: 0.82rem;
+    line-height: 1.45;
+}
+.planner-event-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    margin-top: 0.1rem;
+}
+.session-chip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 28px;
+    padding: 0.2rem 0.55rem;
+    border-radius: 999px;
+    border: 1px solid;
+    font-size: 0.68rem;
+    font-weight: 800;
+    letter-spacing: 0.4px;
+    text-transform: uppercase;
+}
+.planner-results-header {
+    margin-top: 0.25rem;
+    padding-top: 1.5rem;
+}
+.planner-status-banner {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    min-height: 48px;
+    border: 1px solid;
+    border-radius: 10px;
+    font-size: 0.85rem;
+    font-weight: 800;
+    letter-spacing: 0.4px;
+    text-transform: uppercase;
 }
 
 

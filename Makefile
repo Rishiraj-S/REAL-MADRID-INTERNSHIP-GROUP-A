@@ -10,7 +10,7 @@ install-notebooks:
 	python3 -m pip install -e ".[notebooks]"
 
 lint:
-	ruff check app.py train_models.py src tests utils
+	ruff check main.py train_models.py src tests utils
 
 typecheck:
 	mypy

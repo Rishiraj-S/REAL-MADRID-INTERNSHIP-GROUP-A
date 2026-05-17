@@ -13,6 +13,8 @@ This repository contains the end-to-end solution developed by Group A for the Re
 
 The ACWR compares an athlete's recent workload (acute, ~7 days) against their longer-term workload (chronic, ~28 days). Values outside a safe range signal elevated injury risk. This tool enables fitness coaches and technical staff to make data-driven training decisions without writing code or querying databases directly.
 
+For a deeper production-oriented explanation of the problem, data pipeline, modeling stack, forecasting logic, and ACWR mathematics, see [`TECHNICAL_DOCUMENTATION.md`](TECHNICAL_DOCUMENTATION.md).
+
 > Reference: [ACWR definition — Science for Sport](https://www.scienceforsport.com/acutechronic-workload-ratio)
 
 ---

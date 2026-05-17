@@ -16,7 +16,7 @@ if str(SRC_DIR) not in sys.path:
 import streamlit as st
 
 from app.constants import PAGES
-from app.pages import page_dashboard, page_planner, page_results, render_sidebar
+from app.pages import page_dashboard, page_planner, render_sidebar
 from app.styles import inject_styles
 from real_madrid_acwr.config import STATIC_DIR
 
@@ -45,7 +45,5 @@ page = render_sidebar(LOGO_PATH)
 
 if page == PAGES[0]:
     page_dashboard()
-elif page == PAGES[1]:
+else:
     page_planner()
-elif page == PAGES[2]:
-    page_results()

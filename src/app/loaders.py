@@ -25,7 +25,7 @@ def get_models_or_stop():
     except ModuleNotFoundError as exc:
         st.error(
             "A required Python package is missing. Activate the project environment with "
-            "`source .venv/bin/activate` and run `streamlit run main.py` again."
+            "`source .venv/bin/activate` and rerun `streamlit run main.py`."
         )
         st.exception(exc)
         st.stop()
@@ -45,7 +45,9 @@ def load_player_data():
 
     for pid, grp in df.groupby("player_id"):
         grp = grp.sort_values("date").reset_index(drop=True)
-        dr = pd.date_range(grp["date"].min(), grp["date"].max(), freq="D")
+        start_date = pd.Timestamp(grp["date"].min())
+        end_date = pd.Timestamp(grp["date"].max())
+        dr = pd.date_range(start_date, end_date, freq="D")
         # Left-merge creates a complete daily calendar grid; fillna(0) ensures rest days carry
         # zero load rather than NaN — EWMA accumulates over every calendar day, so gaps must be 0
         merged = pd.DataFrame({"date": dr}).merge(

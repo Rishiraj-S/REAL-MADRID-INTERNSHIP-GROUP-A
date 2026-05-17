@@ -8,7 +8,7 @@ this repository.
 End-to-end ACWR (Acute:Chronic Workload Ratio) prediction tool for Real Madrid's
 fitness coaching staff. Coaches enter a planned 15-day session composition and
 see predicted ACWR trajectories for each squad player across three load metrics.
-The interactive app is a Streamlit application (`app.py`).
+The interactive app is a Streamlit application (`main.py`).
 
 The repository keeps `data/data_acute_vs_chronic.zip` as the bootstrap archive.
 The extracted raw CSV lives at `data/raw/data_acute_vs_chronic.csv` and is
@@ -17,7 +17,7 @@ ignored by git.
 ## Repository layout
 
 ```text
-app.py                                      <- Streamlit app (run: streamlit run app.py)
+main.py                                     <- Streamlit app (run: streamlit run main.py)
 train_models.py                             <- Compatibility wrapper for model training
 pyproject.toml                              <- Package metadata, dependencies, tool config
 Makefile                                    <- Common local commands

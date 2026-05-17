@@ -13,6 +13,8 @@ This repository contains the end-to-end solution developed by Group A for the Re
 
 The ACWR compares an athlete's recent workload (acute, ~7 days) against their longer-term workload (chronic, ~28 days). Values outside a safe range signal elevated injury risk. This tool enables fitness coaches and technical staff to make data-driven training decisions without writing code or querying databases directly.
 
+For a deeper production-oriented explanation of the problem, data pipeline, modeling stack, forecasting logic, and ACWR mathematics, see [`TECHNICAL_DOCUMENTATION.md`](TECHNICAL_DOCUMENTATION.md).
+
 > Reference: [ACWR definition — Science for Sport](https://www.scienceforsport.com/acutechronic-workload-ratio)
 
 ---
@@ -98,7 +100,7 @@ Core EWMA computation library:
 - Chronic: α = 2/(28+1) ≈ 0.069
 - Warmup mask: first 28 days masked as NaN (chronic not yet stable)
 
-### 5. Interactive Application (`app.py`)
+### 5. Interactive Application (`main.py`)
 
 A Streamlit single-file application with three pages:
 
@@ -197,7 +199,7 @@ GitHub Actions runs the same checks on pull requests and pushes to `main`.
 
 ```
 .
-├── app.py                              # Streamlit application (3 pages)
+├── main.py                             # Streamlit application (3 pages)
 ├── train_models.py                     # Compatibility wrapper for model training
 ├── Makefile                            # Common local commands
 ├── pyproject.toml                      # Project metadata and tool configuration
@@ -272,8 +274,8 @@ GitHub Actions runs the same checks on pull requests and pushes to `main`.
 - [x] EWMA-ACWR computed for all players × all load metrics, with warmup masking
 - [x] Load prediction models trained and validated (`acc_total`, `total_distance`, `vel_total`)
 - [x] SHAP interpretability analysis complete for all three models
-- [x] 15-day roll-forward ACWR simulation (`build_forecast` in `app.py`)
-- [x] Interactive Streamlit application (`app.py`) — Dashboard, Planner, Forecast Results
+- [x] 15-day roll-forward ACWR simulation (`build_forecast` in `src/app/forecasting.py`)
+- [x] Interactive Streamlit application (`main.py`) — Dashboard, Planner, Forecast Results
 - [x] Professional UI with Real Madrid branding (RM official colours, club logo, team logo)
 - [ ] Final documentation and presentation
 

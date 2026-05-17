@@ -7,7 +7,7 @@ import pandas as pd
 SEASON_START = pd.Timestamp("2024-07-15")
 # Ordered to match has_* columns in model_data.parquet; changing order breaks feature alignment.
 SESSION_TYPES = ["G", "TAC", "BP", "TEC", "MATCH"]
-PAGES = ["Dashboard", "Plan Sessions", "Forecast Results"]
+PAGES = ["Dashboard", "Planning & Forecast"]
 TARGETS = ("total_distance", "acc_total", "vel_total")
 
 # Colors map to Real Madrid's official palette: navy (#00529F), gold (#FEBE10), red (#EE324E).

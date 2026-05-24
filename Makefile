@@ -1,13 +1,15 @@
 .PHONY: install install-dev install-notebooks lint typecheck test quality run train
 
+PYTHON ?= $(shell conda run -n pedri which python 2>/dev/null || python3)
+
 install:
-	python3 -m pip install -e .
+	$(PYTHON) -m pip install -e .
 
 install-dev:
-	python3 -m pip install -e ".[dev]"
+	$(PYTHON) -m pip install -e ".[dev]"
 
 install-notebooks:
-	python3 -m pip install -e ".[notebooks]"
+	$(PYTHON) -m pip install -e ".[notebooks]"
 
 lint:
 	ruff check main.py train_models.py src tests utils

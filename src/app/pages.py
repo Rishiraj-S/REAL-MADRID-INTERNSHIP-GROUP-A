@@ -727,7 +727,7 @@ def _render_forecast_results(
     selector_col, status_col = st.columns([3, 2])
     player_prefix = t("player_prefix")
     with selector_col:
-        pid_options = {f"{player_prefix} {pid} · {t_pos(player_data[pid]['position'])}": str(pid) for pid in all_pids}
+        pid_options = {f"{player_prefix} {pid} · {t_pos(str(player_data[pid]['position']))}": str(pid) for pid in all_pids}
         selected_label = st.selectbox(t("table_player"), list(pid_options.keys()), key="forecast_player_selector")
         selected_pid = pid_options[selected_label]
     with status_col:
@@ -761,7 +761,7 @@ def _render_forecast_results(
     rows_html = ""
     for pid_str in [str(player_id) for player_id in all_pids]:
         pdata = player_data[int(pid_str)]
-        cells = f'<td class="td-pid">{t("player_prefix")} {pid_str}</td><td class="td-pos">{t_pos(pdata["position"])}</td>'
+        cells = f'<td class="td-pid">{t("player_prefix")} {pid_str}</td><td class="td-pos">{t_pos(str(pdata["position"]))}</td>'
         worst_zone = "optimal"
         for metric in TARGETS:
             value = forecast[pid_str][metric]["day15_acwr"]

@@ -85,7 +85,7 @@ def compose_event_title(session_types: Iterable[object], location: str) -> str:
     """Build a concise event title for the calendar surface."""
     ordered_types = normalise_event_types(session_types)
     label = " / ".join(ordered_types) if ordered_types else "Session"
-    if location:
+    if location and location != "Other":
         return f"{label} · {location}"
     return label
 
@@ -101,7 +101,7 @@ def build_event_record(
 ) -> EventDict:
     """Create the persisted planner event structure used across the page."""
     ordered_types = normalise_event_types(session_types)
-    clean_location = location.strip() or "Other"
+    clean_location = location.strip()
     return {
         "id": event_id,
         "title": compose_event_title(ordered_types, clean_location),
@@ -203,11 +203,10 @@ def plan_signature(plan_days: Iterable[Mapping[str, bool]]) -> str:
 def describe_event(event: Mapping[str, object]) -> str:
     """Return a readable summary for secondary planner surfaces."""
     start_dt = event_start_datetime(event)
-    end_dt = event_end_datetime(event)
     types = _mapping_session_types(event)
     type_labels = [SESSION_LABELS.get(session_type, session_type) for session_type in types]
     return (
-        f"{start_dt.strftime('%a %d %b · %H:%M')}–{end_dt.strftime('%H:%M')}"
+        f"{start_dt.strftime('%a %d %b')}"
         f" · {', '.join(type_labels) if type_labels else 'No session types'}"
     )
 

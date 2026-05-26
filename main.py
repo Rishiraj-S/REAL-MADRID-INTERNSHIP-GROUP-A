@@ -41,6 +41,9 @@ if "_pending_nav" in st.session_state:
 elif "nav_page" not in st.session_state:
     st.session_state.nav_page = PAGES[0]
 
+if "lang" not in st.session_state:
+    st.session_state.lang = "ENG"
+
 page = render_sidebar(LOGO_PATH)
 
 if page == PAGES[0]:

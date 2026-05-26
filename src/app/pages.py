@@ -17,25 +17,29 @@ from app.charts import build_acwr_chart
 from app.constants import (
     PAGES,
     SESSION_COLORS,
-    SESSION_LABELS,
     SESSION_TYPES,
     TARGET_META,
     TARGETS,
     ZONE_COLORS,
-    ZONE_LABELS,
 )
 from app.forecasting import build_forecast
+from app.i18n import (
+    fmt_date_full,
+    fmt_date_long,
+    fmt_date_medium,
+    fmt_date_short,
+    fmt_dow_date,
+    t,
+    t_pos,
+)
 from app.loaders import get_models_or_stop, load_player_data
 from app.planning import (
-    LOCATION_OPTIONS,
-    build_calendar_events,
     build_event_record,
     build_plan_date_labels,
     build_plan_days_from_events,
     build_planning_window,
     combine_date_and_time,
     default_event_bounds,
-    describe_event,
     event_end_datetime,
     event_start_datetime,
     normalise_event_types,
@@ -46,6 +50,11 @@ from app.planning import (
 from real_madrid_acwr.config import STATIC_DIR
 
 APP_TIMEZONE = ZoneInfo("Europe/Madrid")
+
+
+def get_session_labels() -> dict[str, str]:
+    """Return session type display labels for the active UI language."""
+    return {stype: t(f"session_type_{stype}") for stype in SESSION_TYPES}
 
 
 def _render_standard_header(title: str, subtitle: str) -> None:
@@ -65,16 +74,14 @@ def page_dashboard() -> None:
     """Render the squad-level ACWR status dashboard."""
     player_data, all_pids, current_acwr = load_player_data()
     get_models_or_stop()
-    last_date = player_data[all_pids[0]]["last_active"].strftime("%d %B %Y")
+    last_date = fmt_date_full(player_data[all_pids[0]]["last_active"])
 
     st.markdown(f"""
     <div class="page-header">
         <div class="page-header-accent"></div>
-        <div class="page-title">Squad <span>ACWR</span> Dashboard</div>
+        <div class="page-title">{t("dashboard_title")}</div>
         <div class="page-sub">
-            Data through <strong style="color:#334D6E">{last_date}</strong>
-            &nbsp;&middot;&nbsp; {len(all_pids)} players tracked
-            &nbsp;&middot;&nbsp; 3 load metrics
+            {t("dashboard_sub").format(date=last_date, n=len(all_pids))}
         </div>
     </div>""", unsafe_allow_html=True)
 
@@ -85,24 +92,24 @@ def page_dashboard() -> None:
     c1, c2, c3, c4 = st.columns(4)
     c1.markdown(f"""<div class="stat-card" style="border-top-color:#EE324E">
         <div class="stat-val" style="color:#EE324E">{n_danger}</div>
-        <div class="stat-lbl">Danger Flags</div>
+        <div class="stat-lbl">{t("kpi_danger_flags")}</div>
     </div>""", unsafe_allow_html=True)
     c2.markdown(f"""<div class="stat-card" style="border-top-color:#F59E0B">
         <div class="stat-val" style="color:#F59E0B">{n_caution}</div>
-        <div class="stat-lbl">Caution Flags</div>
+        <div class="stat-lbl">{t("kpi_caution_flags")}</div>
     </div>""", unsafe_allow_html=True)
     c3.markdown(f"""<div class="stat-card" style="border-top-color:#10B981">
         <div class="stat-val" style="color:#10B981">{n_optimal}</div>
-        <div class="stat-lbl">Optimal Flags</div>
+        <div class="stat-lbl">{t("kpi_optimal_flags")}</div>
     </div>""", unsafe_allow_html=True)
     c4.markdown(f"""<div class="stat-card" style="border-top-color:#00529F">
         <div class="stat-val" style="color:#00529F">{len(all_pids)}</div>
-        <div class="stat-lbl">Players Tracked</div>
+        <div class="stat-lbl">{t("kpi_players_tracked")}</div>
     </div>""", unsafe_allow_html=True)
 
     st.markdown("<div style='margin-top:1.5rem'></div>", unsafe_allow_html=True)
     st.markdown(
-        '<div class="section-label" style="font-size:1rem;letter-spacing:0.5px">Risk Zones</div>',
+        f'<div class="section-label" style="font-size:1rem;letter-spacing:0.5px">{t("section_risk_zones")}</div>',
         unsafe_allow_html=True,
     )
 
@@ -114,7 +121,7 @@ def page_dashboard() -> None:
         ("danger", "ACWR ≥ 1.5"),
     ]):
         color = ZONE_COLORS[zone]
-        label = ZONE_LABELS[zone]
+        label = t(f"zone_{zone}")
         legend_cols[index].markdown(f"""
         <div class="zone-pill" style="color:{color};border-color:{color};background:{color}15">
             <span class="zone-dot" style="background:{color}"></span>
@@ -123,13 +130,23 @@ def page_dashboard() -> None:
 
     st.markdown("---")
     st.markdown(
-        '<div class="section-label" style="font-size:1rem;letter-spacing:0.5px">Player Status — Current ACWR</div>',
+        f'<div class="section-label" style="font-size:1rem;letter-spacing:0.5px">{t("section_player_status")}</div>',
         unsafe_allow_html=True,
     )
 
+    _position_order = {
+        "Full Back": 0,
+        "Central Back": 1,
+        "Central Midfielder": 2,
+        "Winger": 3,
+        "Forward": 4,
+        "Unknown": 99,
+    }
+    sorted_pids = sorted(all_pids, key=lambda pid: _position_order.get(player_data[pid]["position"], 99))
+
     zone_order = ["danger", "caution", "undertraining", "optimal", "unknown"]
     player_cols = st.columns(4)
-    for index, pid in enumerate(all_pids):
+    for index, pid in enumerate(sorted_pids):
         pdata = player_data[pid]
         acwr = current_acwr[pid]
         worst_zone = min((acwr[metric]["zone"] for metric in TARGETS), key=zone_order.index)
@@ -141,11 +158,11 @@ def page_dashboard() -> None:
             value_string = f"{metric_acwr['value']:.2f}" if metric_acwr["value"] is not None else "—"
             rows_html += f"""
             <div class="metric-row">
-                <span class="metric-lbl" style="color:{TARGET_META[metric]['color']}">{TARGET_META[metric]['label']}</span>
+                <span class="metric-lbl" style="color:{TARGET_META[metric]['color']}">{t(f"target_{metric}")}</span>
                 <div class="metric-rhs">
                     <span class="metric-val" style="color:{color}">{value_string}</span>
                     <span class="metric-badge" style="color:{color};border-color:{color};background:{color}18">
-                        {ZONE_LABELS[metric_acwr['zone']]}
+                        {t(f"zone_{metric_acwr['zone']}")}
                     </span>
                 </div>
             </div>"""
@@ -154,7 +171,7 @@ def page_dashboard() -> None:
             st.markdown(f"""
             <div class="player-card {worst_zone}">
                 <div class="card-id">{pid}</div>
-                <div class="card-pos">{pdata['position']}</div>
+                <div class="card-pos">{t_pos(pdata['position'])}</div>
                 <hr class="card-rule">
                 {rows_html}
             </div>""", unsafe_allow_html=True)
@@ -295,12 +312,12 @@ def _calendar_action_token(callback_name: str | None, payload: dict[str, object]
 
 
 def _extract_event_id(payload: dict[str, object]) -> str | None:
-    """Extract an event id from the supported callback payload shapes."""
+    """Extract the parent event id from a callback payload. Strips the |stype suffix from per-type blocks."""
     event_payload = payload.get("event")
     if isinstance(event_payload, dict) and event_payload.get("id") is not None:
-        return str(event_payload["id"])
+        return str(event_payload["id"]).split("|")[0]
     if payload.get("id") is not None:
-        return str(payload["id"])
+        return str(payload["id"]).split("|")[0]
     return None
 
 
@@ -375,7 +392,7 @@ def _open_event_dialog(request: dict[str, object]) -> None:
 def _render_session_legend() -> None:
     """Show the session palette used across the planner surfaces."""
     st.markdown(
-        '<div class="section-label" style="font-size:1rem;letter-spacing:0.5px">Session Types</div>',
+        f'<div class="section-label" style="font-size:1rem;letter-spacing:0.5px">{t("section_session_types")}</div>',
         unsafe_allow_html=True,
     )
     legend_cols = st.columns(len(SESSION_TYPES))
@@ -384,7 +401,7 @@ def _render_session_legend() -> None:
             f"""
             <div class="planner-legend-pill" style="border-color:{SESSION_COLORS[session_type]};color:{SESSION_COLORS[session_type]};background:{SESSION_COLORS[session_type]}12">
                 <span class="planner-legend-dot" style="background:{SESSION_COLORS[session_type]}"></span>
-                {session_type} · {SESSION_LABELS[session_type]}
+                {session_type} · {get_session_labels()[session_type]}
             </div>""",
             unsafe_allow_html=True,
         )
@@ -393,10 +410,10 @@ def _render_session_legend() -> None:
 def _render_planner_metrics(summary: dict[str, int], event_count: int) -> None:
     """Render top-line planner KPIs."""
     metrics = [
-        ("Planned Events", event_count, "#00529F"),
-        ("Active Days", summary["active_days"], "#FEBE10"),
-        ("Match Days", summary["match_days"], "#EE324E"),
-        ("Rest Days", summary["rest_days"], "#64748B"),
+        (t("kpi_sessions_planned"), event_count, "#00529F"),
+        (t("kpi_training_days"), summary["active_days"], "#FEBE10"),
+        (t("kpi_match_days"), summary["match_days"], "#EE324E"),
+        (t("kpi_rest_days"), summary["rest_days"], "#64748B"),
     ]
     metric_cols = st.columns(4)
     for column, (label, value, color) in zip(metric_cols, metrics, strict=False):
@@ -411,11 +428,11 @@ def _render_planner_metrics(summary: dict[str, int], event_count: int) -> None:
 
 
 def _build_calendar_payload(plan_dates: list[pd.Timestamp], plan_events: list[dict[str, object]]) -> list[dict[str, object]]:
-    """Combine editable events with a background highlight for the active forecast window."""
+    """Combine one block per session type with a background highlight for the forecast window."""
     highlight_end = (plan_dates[-1] + pd.Timedelta(days=1)).strftime("%Y-%m-%d")
     planning_window_event = {
         "id": "planning-window-highlight",
-        "title": "Forecast window",
+        "title": t("section_forecast_window"),
         "start": plan_dates[0].strftime("%Y-%m-%d"),
         "end": highlight_end,
         "allDay": True,
@@ -424,7 +441,32 @@ def _build_calendar_payload(plan_dates: list[pd.Timestamp], plan_events: list[di
         "overlap": True,
         "classNames": ["planning-window-highlight"],
     }
-    return [planning_window_event, *build_calendar_events(plan_events)]
+    expanded: list[dict[str, object]] = []
+    for event in sort_events(plan_events):
+        parent_id = str(event["id"])
+        event_types = _event_session_types(event)
+        if not event_types:
+            expanded.append({
+                "id": parent_id,
+                "title": t("calendar_session_fallback"),
+                "start": str(event["start"]),
+                "end": str(event.get("end") or ""),
+                "allDay": False,
+                "editable": False,
+            })
+        else:
+            for stype in event_types:
+                expanded.append({
+                    "id": f"{parent_id}|{stype}",
+                    "title": get_session_labels()[stype],
+                    "start": str(event["start"]),
+                    "end": str(event.get("end") or ""),
+                    "allDay": False,
+                    "backgroundColor": SESSION_COLORS[stype],
+                    "borderColor": SESSION_COLORS[stype],
+                    "editable": False,
+                })
+    return [planning_window_event, *expanded]
 
 
 def _render_calendar(plan_dates: list[pd.Timestamp], plan_events: list[dict[str, object]]) -> object:
@@ -438,6 +480,7 @@ def _render_calendar(plan_dates: list[pd.Timestamp], plan_events: list[dict[str,
 
     from streamlit_calendar import calendar as calendar_fn
 
+    lang = st.session_state.get("lang", "ENG")
     calendar_options = {
         "editable": True,
         "selectable": True,
@@ -445,20 +488,23 @@ def _render_calendar(plan_dates: list[pd.Timestamp], plan_events: list[dict[str,
         "eventDurationEditable": True,
         "firstDay": 1,
         "initialView": "dayGridMonth",
+        "locale": "es" if lang == "ESP" else "en",
         "headerToolbar": {
             "left": "today prev,next",
             "center": "title",
-            "right": "dayGridMonth,timeGridWeek",
+            "right": "",
         },
         "initialDate": plan_dates[0].strftime("%Y-%m-%d"),
+        "validRange": {
+            "start": plan_dates[0].strftime("%Y-%m-%d"),
+            "end": (plan_dates[-1] + pd.Timedelta(days=1)).strftime("%Y-%m-%d"),
+        },
         "height": 760,
         "nowIndicator": True,
         "dayMaxEvents": 3,
-        "slotMinTime": "06:00:00",
-        "slotMaxTime": "23:00:00",
+        "displayEventTime": False,
         "allDaySlot": False,
         "selectMirror": True,
-        "eventTimeFormat": {"hour": "2-digit", "minute": "2-digit", "meridiem": False},
     }
     custom_css = """
     .fc {
@@ -502,13 +548,20 @@ def _render_calendar(plan_dates: list[pd.Timestamp], plan_events: list[dict[str,
     .fc .planning-window-highlight {
         background: rgba(254, 190, 16, 0.14) !important;
     }
+    .fc .fc-day-disabled {
+        background: rgba(220, 230, 242, 0.35) !important;
+    }
+    .fc .fc-day-disabled .fc-daygrid-day-number {
+        color: #94A3B8;
+        opacity: 0.7;
+    }
     """
     return calendar_fn(
         events=_build_calendar_payload(plan_dates, plan_events),
         options=calendar_options,
         custom_css=custom_css,
         callbacks=["dateClick", "select", "eventClick", "eventChange"],
-        key="session_planner_calendar",
+        key=f"session_planner_calendar_{lang}",
     )
 
 
@@ -556,52 +609,49 @@ def _render_schedule_sidebar(
     plan_events: list[dict[str, object]],
     last_active: pd.Timestamp,
 ) -> None:
-    """Render helpful planner context, event list, and secondary event actions."""
-    st.markdown('<div class="section-label">Planning Summary</div>', unsafe_allow_html=True)
-    with st.container(border=True):
+    """Render the planning sidebar: window info, session legend, and event list."""
+    st.markdown(
+        f"""
+        <div class="forecast-window-box">
+            <div class="fw-label">{t("section_forecast_window")}</div>
+            <div class="fw-dates">{fmt_date_short(plan_dates[0])} &rarr; {fmt_date_medium(plan_dates[-1])}</div>
+            <div class="fw-sub">{t("fw_15days")} &nbsp;·&nbsp; {t("fw_model_data_to")} {fmt_date_medium(last_active)}</div>
+        </div>""",
+        unsafe_allow_html=True,
+    )
+
+    if not plan_events:
         st.markdown(
-            f"""
-            <div class="planner-side-copy">
-                <strong>Latest historical data</strong><br>
-                {last_active.strftime('%d %b %Y')}<br><br>
-                <strong>Forecast window</strong><br>
-                {plan_dates[0].strftime('%d %b %Y')} → {plan_dates[-1].strftime('%d %b %Y')}<br><br>
-                The highlighted calendar days define the active 15-day forecast horizon.
-                Events outside that highlight remain visible for planning, but they do not affect the current forecast run.
-            </div>""",
+            f'<div class="section-label" style="margin-top:1.1rem">{t("section_planned_sessions")}</div>',
             unsafe_allow_html=True,
         )
-
-    st.markdown('<div class="section-label" style="margin-top:1rem">Upcoming Sessions</div>', unsafe_allow_html=True)
-    if not plan_events:
-        with st.container(border=True):
-            st.info("No sessions are planned yet. Add an event to start building the next 15-day schedule.")
+        st.info(t("no_sessions_tip"), icon="📅")
         return
 
-    upcoming_events = plan_events[:3]
-    if len(plan_events) > 3:
-        st.caption(f"Showing the next 3 planned sessions out of {len(plan_events)} total events.")
-
-    for event in upcoming_events:
-        event_id = str(event["id"])
-        event_types = _event_session_types(event)
-        with st.container(border=True):
-            st.markdown(
-                f"""
-                <div class="planner-event-card">
-                    <div class="planner-event-title">{event['title']}</div>
-                    <div class="planner-event-meta">{describe_event(event)}</div>
-                    <div class="planner-event-location">📍 {event.get('location', 'Other')}</div>
-                    <div class="planner-event-badges">{_badge_html(event_types)}</div>
-                </div>""",
+    n = len(plan_events)
+    st.markdown(
+        f'<div class="section-label" style="margin-top:1.1rem;margin-bottom:0.3rem">'
+        f'{t("section_planned_sessions")} <span class="slr-count">({n})</span></div>',
+        unsafe_allow_html=True,
+    )
+    with st.container(border=True):
+        for event in plan_events:
+            event_id = str(event["id"])
+            event_types = _event_session_types(event)
+            start_dt = event_start_datetime(event)
+            date_str = fmt_dow_date(start_dt)
+            types_str = " · ".join(event_types) if event_types else "—"
+            text_col, edit_col, del_col = st.columns([5, 0.55, 0.55], gap="small")
+            text_col.markdown(
+                f'<div class="session-list-row">'
+                f'<span class="slr-date">{date_str}:</span> '
+                f'<span class="slr-types">{types_str}</span>'
+                f"</div>",
                 unsafe_allow_html=True,
             )
-            if event.get("notes"):
-                st.caption(str(event["notes"]))
-            edit_col, delete_col = st.columns(2)
-            if edit_col.button("Edit", key=f"edit_event_{event_id}", use_container_width=True):
+            if edit_col.button("✏️", key=f"edit_event_{event_id}", use_container_width=True):
                 _open_event_dialog({"mode": "edit", "event_id": event_id})
-            if delete_col.button("Delete", key=f"delete_event_{event_id}", use_container_width=True):
+            if del_col.button("🗑️", key=f"delete_event_{event_id}", use_container_width=True):
                 _remove_event(event_id)
                 st.rerun()
 
@@ -611,7 +661,7 @@ def _run_forecast(plan_dates: list[pd.Timestamp]) -> None:
     plan_events = sort_events(st.session_state.plan_events)
     plan_days = build_plan_days_from_events(plan_events, plan_dates)
 
-    with st.spinner("Computing 15-day ACWR forecasts for all 28 players…"):
+    with st.spinner(t("spinner_forecast")):
         results = build_forecast(plan_days)
 
     if results:
@@ -620,7 +670,7 @@ def _run_forecast(plan_dates: list[pd.Timestamp]) -> None:
         st.session_state.plan_dates = build_plan_date_labels(plan_dates)
         st.session_state.forecast_plan_signature = plan_signature(plan_days)
     else:
-        st.error("Forecast failed — check models are trained (`python train_models.py`).")
+        st.error(t("err_forecast_failed"))
 
 
 def _render_forecast_results(
@@ -635,24 +685,22 @@ def _render_forecast_results(
     st.markdown(
         f"""
         <div class="page-header planner-results-header">
-            <div class="page-title">Forecast <span>Results</span></div>
+            <div class="page-title">{t("forecast_results_title")}</div>
             <div class="page-sub">
-                15-day ACWR projection &nbsp;&middot;&nbsp;
-                {len(all_pids)} players &nbsp;&middot;&nbsp; 3 load metrics
+                {t("forecast_results_sub")} &nbsp;&middot;&nbsp;
+                {t("forecast_header_meta").format(n=len(all_pids))}
             </div>
         </div>""",
         unsafe_allow_html=True,
     )
 
     if forecast_is_stale:
-        st.warning(
-            "The planning calendar has changed since the last forecast run. The results below are preserved for reference; run the forecast again to refresh them."
-        )
+        st.warning(t("forecast_stale_warning"), icon="⚠️")
 
     danger_entries: list[tuple[str, list[str]]] = []
     for pid in all_pids:
         bad_metrics = [
-            TARGET_META[metric]["label"]
+            t(f"target_{metric}")
             for metric in TARGETS
             if forecast[str(pid)][metric]["day15_zone"] == "danger"
         ]
@@ -660,16 +708,16 @@ def _render_forecast_results(
             danger_entries.append((str(pid), bad_metrics))
 
     if danger_entries:
+        player_prefix = t("player_prefix")
         rows = "".join(
-            f'<div style="margin-top:4px">&#x2022; Player <strong>{player}</strong> — {", ".join(metrics)}</div>'
+            f'<div style="margin-top:4px">&#x2022; {player_prefix} <strong>{player}</strong> — {", ".join(metrics)}</div>'
             for player, metrics in danger_entries
         )
         st.markdown(
             f"""
             <div class="rm-alert">
                 <div>
-                    <strong>Injury Risk Alert:</strong> {len(danger_entries)} player(s) projected
-                    in DANGER zone by Day 15:
+                    <strong>{t("injury_risk_alert")}:</strong> {t("injury_risk_msg").format(n=len(danger_entries))}
                     {rows}
                 </div>
             </div>""",
@@ -677,13 +725,14 @@ def _render_forecast_results(
         )
 
     selector_col, status_col = st.columns([3, 2])
+    player_prefix = t("player_prefix")
     with selector_col:
-        pid_options = {f"Player {pid} · {player_data[pid]['position']}": str(pid) for pid in all_pids}
-        selected_label = st.selectbox("Player", list(pid_options.keys()), key="forecast_player_selector")
+        pid_options = {f"{player_prefix} {pid} · {t_pos(str(player_data[pid]['position']))}": str(pid) for pid in all_pids}
+        selected_label = st.selectbox(t("table_player"), list(pid_options.keys()), key="forecast_player_selector")
         selected_pid = pid_options[selected_label]
     with status_col:
         st.markdown("<div style='margin-top:1.85rem'></div>", unsafe_allow_html=True)
-        status_text = "Plan updated after last run" if forecast_is_stale else "Forecast is up to date"
+        status_text = t("status_stale") if forecast_is_stale else t("status_fresh")
         status_color = "#F59E0B" if forecast_is_stale else "#10B981"
         st.markdown(
             f'<div class="planner-status-banner" style="border-color:{status_color};color:{status_color};background:{status_color}12">{status_text}</div>',
@@ -693,34 +742,35 @@ def _render_forecast_results(
     for metric in TARGETS:
         meta = TARGET_META[metric]
         st.markdown(
-            f'<div class="section-label" style="color:{meta["color"]};margin-top:1rem">{meta["label"]} &nbsp;·&nbsp; ACWR (unitless)</div>',
+            f'<div class="section-label" style="color:{meta["color"]};margin-top:1rem">{t(f"target_{metric}")} &nbsp;·&nbsp; {t("target_acwr_unit")}</div>',
             unsafe_allow_html=True,
         )
         metric_forecast = forecast[selected_pid][metric]
-        fig = build_acwr_chart(metric_forecast, meta)
+        meta_translated = {**meta, "label": t(f"target_{metric}")}
+        fig = build_acwr_chart(metric_forecast, meta_translated)
         st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
     st.markdown("---")
-    st.markdown('<div class="section-label">Day-15 Summary — All Players</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="section-label">{t("section_day15_summary")}</div>', unsafe_allow_html=True)
 
     zone_order = ["danger", "caution", "undertraining", "optimal", "unknown"]
     header_cols = "".join(
-        f'<th style="color:{TARGET_META[metric]["color"]}">{TARGET_META[metric]["label"]}</th>'
+        f'<th style="color:{TARGET_META[metric]["color"]}">{t(f"target_{metric}")}</th>'
         for metric in TARGETS
     )
     rows_html = ""
     for pid_str in [str(player_id) for player_id in all_pids]:
         pdata = player_data[int(pid_str)]
-        cells = f'<td class="td-pid">Player {pid_str}</td><td class="td-pos">{pdata["position"]}</td>'
+        cells = f'<td class="td-pid">{t("player_prefix")} {pid_str}</td><td class="td-pos">{t_pos(str(pdata["position"]))}</td>'
         worst_zone = "optimal"
         for metric in TARGETS:
             value = forecast[pid_str][metric]["day15_acwr"]
             zone = cast(str, forecast[pid_str][metric]["day15_zone"])
             color = ZONE_COLORS[zone]
-            label = ZONE_LABELS[zone]
+            label = t(f"zone_{zone}")
             if zone_order.index(zone) < zone_order.index(worst_zone):
                 worst_zone = zone
-            value_string = f"{value:.2f}" if isinstance(value, (int, float)) else "—"
+            value_string = f"{value:.2f}" if isinstance(value, int | float) else "—"
             cells += f"""
             <td>
                 <span style="color:{color};font-weight:700;font-family:'Courier New',monospace">{value_string}</span>
@@ -728,7 +778,12 @@ def _render_forecast_results(
                              padding:2px 6px;border-radius:5px;border:1px solid {color};
                              color:{color};background:{color}18;margin-left:5px">{label}</span>
             </td>"""
-        status_icons = {"danger": "HIGH RISK", "caution": "CAUTION", "optimal": "OK", "undertraining": "LOW"}
+        status_icons = {
+            "danger": t("status_high_risk"),
+            "caution": t("status_caution"),
+            "optimal": t("status_ok"),
+            "undertraining": t("status_low"),
+        }
         status_color = ZONE_COLORS[worst_zone]
         status_label = status_icons.get(worst_zone, "—")
         cells += f'<td><span style="color:{status_color};font-size:0.65rem;font-weight:800;letter-spacing:0.8px">{status_label}</span></td>'
@@ -739,7 +794,7 @@ def _render_forecast_results(
         <div style="overflow-x:auto;border:1px solid #E2EBF6;border-radius:10px;
                     box-shadow:0 1px 6px rgba(0,60,140,0.06)">
             <table class="rm-table">
-                <thead><tr><th>Player</th><th>Position</th>{header_cols}<th>Status</th></tr></thead>
+                <thead><tr><th>{t("table_player")}</th><th>{t("table_position")}</th>{header_cols}<th>{t("table_status")}</th></tr></thead>
                 <tbody>{rows_html}</tbody>
             </table>
         </div>""",
@@ -747,7 +802,7 @@ def _render_forecast_results(
     )
 
 
-@st.dialog("Session Event", width="large")
+@st.dialog("Session Event", width="small")
 def _event_editor_dialog(plan_dates: list[pd.Timestamp]) -> None:
     """Modal dialog used to create or edit planning events."""
     request = st.session_state.get("planner_dialog_request")
@@ -760,70 +815,58 @@ def _event_editor_dialog(plan_dates: list[pd.Timestamp]) -> None:
         default_start, default_end = default_event_bounds(plan_dates)
         start_dt = _coerce_timestamp(request.get("start", default_start.isoformat()))
         end_dt = _coerce_timestamp(request.get("end", default_end.isoformat()))
-        event_id = str(uuid4())
+        # Stable event_id across reruns — uuid4() called once, then reused from session state
+        if "_dialog_event_id" not in st.session_state:
+            st.session_state._dialog_event_id = str(uuid4())
+        event_id = st.session_state._dialog_event_id
         selected_types: list[str] = []
-        location = LOCATION_OPTIONS[0]
         notes = ""
-        dialog_title = "Create a new session"
+        dialog_title = t("dialog_create_title")
     else:
         start_dt = event_start_datetime(current_event)
         end_dt = event_end_datetime(current_event)
         event_id = str(current_event["id"])
         selected_types = _event_session_types(current_event)
-        location = str(current_event.get("location", LOCATION_OPTIONS[0]))
         notes = str(current_event.get("notes", ""))
-        dialog_title = "Edit planned session"
+        dialog_title = t("dialog_edit_title")
 
     safe_start_date = start_dt.date() if isinstance(start_dt, datetime) else plan_dates[0].date()
+    selected_date_value = safe_start_date
+    start_time_value = start_dt.time()
+    end_time_value = end_dt.time()
 
     st.markdown(f"**{dialog_title}**")
-    selected_date = st.date_input(
-        "Date",
-        value=safe_start_date,
-        format="YYYY-MM-DD",
-    )
-    time_col1, time_col2 = st.columns(2)
-    with time_col1:
-        start_time_input = st.time_input("Start time", value=start_dt.time(), step=900)
-    with time_col2:
-        end_time_input = st.time_input("End time", value=end_dt.time(), step=900)
+    st.markdown(f"**{t('dialog_date_label')}** {fmt_date_long(safe_start_date)}")
 
-    selected_date_value = _coerce_date_input(selected_date, safe_start_date)
-    start_time_value = _coerce_time_input(start_time_input, start_dt.time())
-    end_time_value = _coerce_time_input(end_time_input, end_dt.time())
+    st.markdown(f"**{t('dialog_training_types')}**")
+    session_labels = get_session_labels()
+    session_types = [
+        stype for stype in SESSION_TYPES
+        if st.checkbox(
+            f"{stype} · {session_labels[stype]}",
+            value=stype in selected_types,
+            key=f"dialog_stype_{stype}_{event_id}",
+        )
+    ]
 
-    session_types = st.multiselect(
-        "Session types",
-        SESSION_TYPES,
-        default=selected_types,
-        format_func=lambda session_type: f"{session_type} · {SESSION_LABELS[session_type]}",
-    )
-    location_value = location if location in LOCATION_OPTIONS else "Other"
-    selected_location = st.selectbox(
-        "Location",
-        LOCATION_OPTIONS,
-        index=LOCATION_OPTIONS.index(location_value),
-    )
     notes_value = st.text_area(
-        "Notes",
+        t("dialog_notes"),
         value=notes,
-        placeholder="Optional coaching context, travel information, or drill notes.",
+        placeholder=t("dialog_notes_placeholder"),
         height=120,
     )
-
-    selected_location_value = selected_location or LOCATION_OPTIONS[0]
     notes_text = notes_value or ""
 
     save_col, cancel_col = st.columns(2)
-    if save_col.button("Save Event", type="primary", use_container_width=True):
+    if save_col.button(t("dialog_save"), type="primary", use_container_width=True):
         if not session_types:
-            st.error("Select at least one session type before saving the event.")
+            st.error(t("dialog_err_no_types"))
             st.stop()
 
         start_value = combine_date_and_time(selected_date_value, start_time_value)
         end_value = combine_date_and_time(selected_date_value, end_time_value)
         if end_value <= start_value:
-            st.error("The event end time must be later than the start time.")
+            st.error(t("dialog_err_time"))
             st.stop()
 
         _upsert_event(
@@ -832,20 +875,23 @@ def _event_editor_dialog(plan_dates: list[pd.Timestamp]) -> None:
                 start_dt=start_value,
                 end_dt=end_value,
                 session_types=session_types,
-                location=selected_location_value,
+                location="",
                 notes=notes_text,
             )
         )
         st.session_state.planner_dialog_request = None
+        st.session_state.pop("_dialog_event_id", None)
         st.rerun()
 
-    if cancel_col.button("Cancel", use_container_width=True):
+    if cancel_col.button(t("dialog_cancel"), use_container_width=True):
         st.session_state.planner_dialog_request = None
+        st.session_state.pop("_dialog_event_id", None)
         st.rerun()
 
-    if current_event is not None and st.button("Delete Event", type="secondary", use_container_width=True):
+    if current_event is not None and st.button(t("dialog_delete"), type="secondary", use_container_width=True):
         _remove_event(str(current_event["id"]))
         st.session_state.planner_dialog_request = None
+        st.session_state.pop("_dialog_event_id", None)
         st.rerun()
 
 
@@ -865,44 +911,29 @@ def page_planner() -> None:
         and st.session_state.get("forecast_plan_signature") != plan_signature(current_plan_days)
     )
 
-    _render_standard_header(
-        "Planning & <span>Forecast</span>",
-        "Schedule the next 15 days in an interactive calendar, then run a squad-wide ACWR forecast without leaving the page.",
-    )
+    _render_standard_header(t("planner_title"), t("planner_sub"))
     st.caption(
-        "Forecast window is anchored to the latest available squad data on "
-        f"{last_active.strftime('%d %b %Y')}. Highlighted calendar days mark the active 15-day forecast horizon; events outside the highlight are stored but ignored by the current forecast run."
-    )
-    _render_session_legend()
-    st.markdown("<div style='margin-top:1rem'></div>", unsafe_allow_html=True)
-    _render_planner_metrics(plan_summary, len(plan_events))
-
-    st.markdown("<div style='margin-top:1rem'></div>", unsafe_allow_html=True)
-    action_cols = st.columns([1, 1, 1.3, 1.7])
-    if action_cols[0].button("New Event", type="secondary", use_container_width=True):
-        default_start, default_end = default_event_bounds(plan_dates)
-        _open_event_dialog(
-            {
-                "mode": "create",
-                "start": default_start.isoformat(timespec="minutes"),
-                "end": default_end.isoformat(timespec="minutes"),
-            }
+        t("planner_caption").format(
+            start=fmt_date_short(plan_dates[0]),
+            end=fmt_date_medium(plan_dates[-1]),
         )
-    if action_cols[1].button("Clear Plan", type="secondary", use_container_width=True):
-        st.session_state.plan_events = []
-        st.rerun()
-    if action_cols[2].button("Run Forecast", type="primary", use_container_width=True):
-        _run_forecast(plan_dates)
-        st.rerun()
-    action_cols[3].markdown(
-        '<div class="planner-hint">Tip: click a date, drag across the weekly view, or move existing events directly on the calendar.</div>',
-        unsafe_allow_html=True,
     )
+    _render_planner_metrics(plan_summary, len(plan_events))
+    st.markdown("<div style='margin-top:0.75rem'></div>", unsafe_allow_html=True)
+    _render_session_legend()
 
     calendar_col, schedule_col = st.columns([2.25, 1], gap="large")
     with calendar_col:
-        st.markdown('<div class="section-label">Interactive Session Calendar</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="section-label">{t("section_session_calendar")}</div>', unsafe_allow_html=True)
         _handle_calendar_interactions(plan_dates)
+        st.markdown("<div style='margin-top:0.75rem'></div>", unsafe_allow_html=True)
+        action_cols = st.columns([1, 1.3])
+        if action_cols[0].button(t("btn_clear_plan"), type="secondary", use_container_width=True):
+            st.session_state.plan_events = []
+            st.rerun()
+        if action_cols[1].button(t("btn_run_forecast"), type="primary", use_container_width=True):
+            _run_forecast(plan_dates)
+            st.rerun()
     with schedule_col:
         _render_schedule_sidebar(plan_dates, sort_events(st.session_state.plan_events), last_active)
 
@@ -911,7 +942,7 @@ def page_planner() -> None:
 
     if "forecast" not in st.session_state:
         st.markdown("---")
-        st.info("Build the upcoming schedule above, then click **Run Forecast** to generate the integrated ACWR results view.")
+        st.info(t("info_no_forecast"), icon="📊")
         return
 
     _render_forecast_results(
@@ -940,21 +971,27 @@ def render_sidebar(logo_path):
                         color:#FEBE10;text-transform:uppercase;line-height:1.2">Real Madrid C.F.</div>
             <div style="font-size:0.96rem;font-weight:400;letter-spacing:2px;
                         color:rgba(255,255,255,0.55);text-transform:uppercase;margin-top:5px">
-                ACWR Monitor
+                {t("sidebar_app_name")}
             </div>
         </div>""", unsafe_allow_html=True)
 
         st.markdown("---")
-        page = st.radio("Navigation", PAGES, key="nav_page", label_visibility="collapsed")
+        page = st.radio(
+            "Navigation",
+            PAGES,
+            key="nav_page",
+            label_visibility="collapsed",
+            format_func=lambda p: t("nav_dashboard") if p == PAGES[0] else t("nav_planner"),
+        )
         st.markdown("---")
 
-        st.markdown("""
+        st.markdown(f"""
         <div style="padding:0.5rem 1rem 1rem;font-size:0.65rem;color:rgba(255,255,255,0.4);line-height:1.8">
             <div style="font-weight:700;color:rgba(255,255,255,0.6);
                         text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">
-                Season 2024/25
+                {t("sidebar_season")}
             </div>
-            <div>28 Players &nbsp;&middot;&nbsp; 3 Metrics</div>
+            <div>{t("sidebar_players_metrics")}</div>
             <div>EWMA · α<sub>acute</sub>=0.25 · α<sub>chronic</sub>≈0.07</div>
         </div>""", unsafe_allow_html=True)
 
@@ -968,9 +1005,17 @@ def render_sidebar(logo_path):
         <div style="padding:0.5rem 1rem 1.5rem;text-align:center">
             <div style="font-size:0.68rem;font-weight:600;letter-spacing:1.5px;
                         color:rgba(255,255,255,0.35);text-transform:uppercase;margin-bottom:10px">
-                Developed by
+                {t("sidebar_developed_by")}
             </div>
             {'<div style="display:inline-block;background:#FFFFFF;border-radius:8px;padding:6px 14px"><img src="data:image/png;base64,' + team_b64 + '" style="width:110px;display:block"></div>' if team_b64 else '<span style="color:rgba(255,255,255,0.5);font-weight:700">trAIn Labs</span>'}
         </div>""", unsafe_allow_html=True)
+
+        st.radio(
+            "",
+            ["ENG", "ESP"],
+            key="lang",
+            horizontal=True,
+            label_visibility="collapsed",
+        )
 
         return page

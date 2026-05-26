@@ -23,10 +23,17 @@ from app.constants import (
     ZONE_COLORS,
 )
 from app.forecasting import build_forecast
-from app.i18n import fmt_date_full, fmt_date_long, fmt_date_medium, fmt_date_short, fmt_dow_date, t, t_pos
+from app.i18n import (
+    fmt_date_full,
+    fmt_date_long,
+    fmt_date_medium,
+    fmt_date_short,
+    fmt_dow_date,
+    t,
+    t_pos,
+)
 from app.loaders import get_models_or_stop, load_player_data
 from app.planning import (
-    LOCATION_OPTIONS,
     build_event_record,
     build_plan_date_labels,
     build_plan_days_from_events,
@@ -763,7 +770,7 @@ def _render_forecast_results(
             label = t(f"zone_{zone}")
             if zone_order.index(zone) < zone_order.index(worst_zone):
                 worst_zone = zone
-            value_string = f"{value:.2f}" if isinstance(value, (int, float)) else "—"
+            value_string = f"{value:.2f}" if isinstance(value, int | float) else "—"
             cells += f"""
             <td>
                 <span style="color:{color};font-weight:700;font-family:'Courier New',monospace">{value_string}</span>
@@ -813,7 +820,6 @@ def _event_editor_dialog(plan_dates: list[pd.Timestamp]) -> None:
             st.session_state._dialog_event_id = str(uuid4())
         event_id = st.session_state._dialog_event_id
         selected_types: list[str] = []
-        location = LOCATION_OPTIONS[0]
         notes = ""
         dialog_title = t("dialog_create_title")
     else:
@@ -821,7 +827,6 @@ def _event_editor_dialog(plan_dates: list[pd.Timestamp]) -> None:
         end_dt = event_end_datetime(current_event)
         event_id = str(current_event["id"])
         selected_types = _event_session_types(current_event)
-        location = str(current_event.get("location", LOCATION_OPTIONS[0]))
         notes = str(current_event.get("notes", ""))
         dialog_title = t("dialog_edit_title")
 

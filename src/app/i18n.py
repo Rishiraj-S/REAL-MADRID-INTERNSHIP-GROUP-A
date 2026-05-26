@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-from datetime import date as _date, datetime as _datetime
-from typing import Union
+from datetime import date as _date
+from datetime import datetime as _datetime
 
 import streamlit as st
 
 from app.constants import TRANSLATIONS
 
-_DateLike = Union[_date, _datetime]
+_DateLike = _date | _datetime
 
 _ES_MONTH_ABBR = ["Ene", "Feb", "Mar", "Abr", "May", "Jun",
                    "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"]

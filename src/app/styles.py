@@ -296,6 +296,141 @@ header[data-testid="stHeader"] { background: transparent !important; }
 }
 
 
+/* Planner sidebar — forecast window box */
+.forecast-window-box {
+    background: linear-gradient(135deg, #002D5A 0%, #00529F 100%);
+    border-radius: 12px;
+    padding: 1rem 1.15rem 0.9rem;
+    color: #FFFFFF;
+}
+.fw-label {
+    font-size: 0.68rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    color: rgba(255,255,255,0.55);
+    margin-bottom: 0.3rem;
+}
+.fw-dates {
+    font-size: 1.05rem;
+    font-weight: 800;
+    color: #FEBE10;
+    line-height: 1.25;
+    margin-bottom: 0.25rem;
+}
+.fw-sub {
+    font-size: 0.73rem;
+    color: rgba(255,255,255,0.50);
+    font-weight: 400;
+}
+
+/* Planner sidebar — session type legend rows */
+.sidebar-session-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 3px 0;
+}
+.sidebar-session-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+.sidebar-session-code {
+    font-size: 0.77rem;
+    font-weight: 800;
+    letter-spacing: 0.5px;
+    min-width: 38px;
+}
+.sidebar-session-name {
+    font-size: 0.80rem;
+    color: #475569;
+    font-weight: 500;
+}
+
+/* Planned sessions — panel and single-line rows */
+.session-list-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 0;
+    margin: 0;
+    line-height: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.session-list-row p { margin: 0 !important; }
+.slr-date {
+    font-size: 0.80rem;
+    font-weight: 700;
+    color: #0F172A;
+    flex-shrink: 0;
+}
+.slr-types {
+    font-size: 0.80rem;
+    color: #00529F;
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+/* Session count inline with heading */
+.slr-count {
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: #64748B;
+    text-transform: none;
+    letter-spacing: 0;
+}
+/* Remove top padding inside the session panel bordered container */
+[data-testid="stVerticalBlockBorderWrapper"]:has(.session-list-row) > [data-testid="stVerticalBlock"] {
+    padding-top: 0 !important;
+    gap: 0 !important;
+}
+[data-testid="stVerticalBlockBorderWrapper"]:has(.session-list-row) [data-testid="stHorizontalBlock"]:first-child {
+    margin-top: 0 !important;
+    padding-top: 0 !important;
+}
+/* Force row alignment — strip all wrapper margins inside session rows */
+[data-testid="stHorizontalBlock"]:has(.session-list-row) {
+    align-items: center !important;
+    gap: 4px !important;
+    padding: 3px 0 !important;
+    margin: 0 !important;
+    border-bottom: 1px solid #EEF3FA;
+}
+[data-testid="stHorizontalBlock"]:has(.session-list-row) > [data-testid="stColumn"] {
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+    min-width: 0 !important;
+}
+[data-testid="stHorizontalBlock"]:has(.session-list-row) [data-testid="stElementContainer"],
+[data-testid="stHorizontalBlock"]:has(.session-list-row) [data-testid="stElementContainer"] > div,
+[data-testid="stHorizontalBlock"]:has(.session-list-row) [data-testid="stMarkdownContainer"],
+[data-testid="stHorizontalBlock"]:has(.session-list-row) [data-testid="stMarkdownContainer"] p {
+    margin: 0 !important;
+    padding: 0 !important;
+    line-height: 1 !important;
+}
+[data-testid="stHorizontalBlock"]:has(.session-list-row) .stButton {
+    margin: 0 !important;
+    display: flex !important;
+    align-items: center !important;
+}
+[data-testid="stHorizontalBlock"]:has(.session-list-row) .stButton > button {
+    padding: 0 !important;
+    min-height: 26px !important;
+    height: 26px !important;
+    width: 100% !important;
+    font-size: 0.85rem !important;
+    line-height: 1 !important;
+    border-radius: 5px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+}
+
 /* Alert banner */
 .rm-alert {
     display: flex; align-items: flex-start; gap: 12px;

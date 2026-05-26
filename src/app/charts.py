@@ -40,7 +40,7 @@ def build_acwr_chart(mdata: dict, meta: dict) -> Any:
     fig.add_trace(go.Scatter(
         x=join_x, y=join_y,
         mode="lines", name="Historical",
-        line=dict(color="rgba(0,82,159,0.40)", width=2),
+        line=dict(color="rgba(0,82,159,0.65)", width=2),
         connectgaps=False,
         hovertemplate="<b>%{x}</b><br>ACWR: %{y:.3f}<extra>Historical</extra>",
     ))
@@ -66,8 +66,10 @@ def build_acwr_chart(mdata: dict, meta: dict) -> Any:
         hoverlabel=dict(bgcolor="#FFFFFF", bordercolor="#DCE8F5",
                         font=dict(color="#0F172A", size=12)),
         legend=dict(orientation="h", yanchor="bottom", y=1.02,
-                    xanchor="right", x=1, bgcolor="rgba(0,0,0,0)",
-                    font=dict(size=11)),
+                    xanchor="right", x=1,
+                    bgcolor="rgba(255,255,255,0.95)",
+                    bordercolor="#DCE8F5", borderwidth=1,
+                    font=dict(size=11, color="#334D6E")),
         xaxis=dict(tickfont=dict(size=10, color="#64748B"),
                    gridcolor="rgba(0,82,159,0.06)",
                    showline=False, tickangle=40, nticks=22),

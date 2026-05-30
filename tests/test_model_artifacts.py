@@ -1,4 +1,3 @@
-import pickle
 import shutil
 from pathlib import Path
 
@@ -6,9 +5,9 @@ import pytest
 
 from real_madrid_acwr.config import MODEL_ARTIFACTS_DIR
 from real_madrid_acwr.modeling.artifacts import (
-    BASE_FEATURES,
     TARGETS,
     ArtifactLoadError,
+    ForecastBundle,
     load_model_artifacts,
 )
 
@@ -19,66 +18,64 @@ def _copy_artifacts(tmp_path: Path) -> Path:
     return artifact_dir
 
 
-def _load_feature_cols(artifact_dir: Path, target: str) -> list[str]:
-    with (artifact_dir / target / "feature_cols.pkl").open("rb") as file:
-        return pickle.load(file)
-
-
-def _write_pickle(path: Path, value: object) -> None:
-    with path.open("wb") as file:
-        pickle.dump(value, file)
-
-
 def test_current_model_artifacts_load_successfully() -> None:
-    artifacts = load_model_artifacts()
+    bundles = load_model_artifacts()
 
-    assert set(artifacts) == set(TARGETS)
-    for target, artifact in artifacts.items():
-        assert artifact.target == target
-        assert len(artifact.feature_cols) == 45
-        assert BASE_FEATURES.issubset(artifact.feature_cols)
-        assert len([col for col in artifact.feature_cols if col.startswith("pid_")]) == 28
+    assert set(bundles) == set(TARGETS)
+    for target, bundle in bundles.items():
+        assert isinstance(bundle, ForecastBundle)
+        assert bundle.target == target
+        assert isinstance(bundle.feature_cols, list)
+        assert len(bundle.feature_cols) > 0
+        assert len(set(bundle.feature_cols)) == len(bundle.feature_cols)
+        assert set(bundle.ewma_spans) == {"acute", "chronic"}
 
 
 def test_missing_target_directory_raises_artifact_error(tmp_path: Path) -> None:
     artifact_dir = _copy_artifacts(tmp_path)
-    shutil.rmtree(artifact_dir / "acc_total")
+    shutil.rmtree(artifact_dir / "accelerations")
 
-    with pytest.raises(ArtifactLoadError, match="acc_total: missing artifact file"):
+    with pytest.raises(ArtifactLoadError, match="accelerations: missing bundle file"):
         load_model_artifacts(artifact_dir)
 
 
-def test_missing_file_in_artifact_triad_raises_artifact_error(tmp_path: Path) -> None:
+def test_missing_bundle_file_raises_artifact_error(tmp_path: Path) -> None:
     artifact_dir = _copy_artifacts(tmp_path)
-    (artifact_dir / "total_distance" / "transform.pkl").unlink()
+    (artifact_dir / "total_distance" / "bundle.joblib").unlink()
 
-    with pytest.raises(ArtifactLoadError, match="total_distance: missing artifact file"):
+    with pytest.raises(ArtifactLoadError, match="total_distance: missing bundle file"):
         load_model_artifacts(artifact_dir)
 
 
-def test_bad_transform_metadata_raises_artifact_error(tmp_path: Path) -> None:
+def test_corrupted_bundle_raises_artifact_error(tmp_path: Path) -> None:
     artifact_dir = _copy_artifacts(tmp_path)
-    _write_pickle(artifact_dir / "vel_total" / "transform.pkl", {"type": "sqrt"})
+    (artifact_dir / "sprint_distance" / "bundle.joblib").write_bytes(b"not a valid joblib file")
 
-    with pytest.raises(ArtifactLoadError, match="vel_total: unsupported transform metadata"):
+    with pytest.raises(ArtifactLoadError, match="sprint_distance: could not load bundle"):
         load_model_artifacts(artifact_dir)
 
 
-def test_duplicate_feature_columns_raise_artifact_error(tmp_path: Path) -> None:
-    artifact_dir = _copy_artifacts(tmp_path)
-    feature_cols = _load_feature_cols(artifact_dir, "acc_total")
-    feature_cols[-1] = feature_cols[-2]
-    _write_pickle(artifact_dir / "acc_total" / "feature_cols.pkl", feature_cols)
+def test_bundle_missing_key_raises_artifact_error(tmp_path: Path) -> None:
+    import joblib
 
-    with pytest.raises(ArtifactLoadError, match="acc_total: feature columns contain duplicates"):
+    artifact_dir = _copy_artifacts(tmp_path)
+    bundle_path = artifact_dir / "accelerations" / "bundle.joblib"
+    raw = joblib.load(bundle_path)
+    del raw["scaler"]
+    joblib.dump(raw, bundle_path)
+
+    with pytest.raises(ArtifactLoadError, match="accelerations: bundle missing key 'scaler'"):
         load_model_artifacts(artifact_dir)
 
 
-def test_missing_base_feature_raises_artifact_error(tmp_path: Path) -> None:
-    artifact_dir = _copy_artifacts(tmp_path)
-    feature_cols = _load_feature_cols(artifact_dir, "total_distance")
-    feature_cols[feature_cols.index("height")] = "unexpected_feature"
-    _write_pickle(artifact_dir / "total_distance" / "feature_cols.pkl", feature_cols)
+def test_duplicate_feature_cols_raise_artifact_error(tmp_path: Path) -> None:
+    import joblib
 
-    with pytest.raises(ArtifactLoadError, match="total_distance: missing base feature"):
+    artifact_dir = _copy_artifacts(tmp_path)
+    bundle_path = artifact_dir / "accelerations" / "bundle.joblib"
+    raw = joblib.load(bundle_path)
+    raw["feature_cols"] = raw["feature_cols"] + [raw["feature_cols"][0]]
+    joblib.dump(raw, bundle_path)
+
+    with pytest.raises(ArtifactLoadError, match="accelerations: feature_cols contains duplicates"):
         load_model_artifacts(artifact_dir)

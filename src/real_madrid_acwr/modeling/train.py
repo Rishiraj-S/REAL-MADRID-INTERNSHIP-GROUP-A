@@ -1,148 +1,332 @@
 """
-train_models.py — Train all three XGBoost models using best hyperparameters
-found during RandomizedSearchCV (100 iter, 5-fold CV) in the model notebooks.
+train.py — Train three load-forecasting models (accelerations, sprint_distance, total_distance)
+using date-blocked CV with XGBoost, MinMaxScaler, and log1p transform.
 
 Run once before starting the app:
-    python3 train_models.py
+    python train_models.py
 
-Saves to models/:
-    xgboost/{target}/model.json        — XGBoost native format
-    xgboost/{target}/feature_cols.pkl  — ordered list of 45 feature names
-    xgboost/{target}/transform.pkl     — inverse-transform metadata
+Saves to models/xgboost/{target}/:
+    bundle.joblib  — dict with model, scaler, feature_cols, ewma_spans
+
+Also saves to data/processed/:
+    daily.parquet  — raw daily frame used for history at inference time
 """
 
-import pickle
-import warnings
-from typing import cast
+from __future__ import annotations
 
+import warnings
+import zipfile
+from pathlib import Path
+from typing import Any
+
+import joblib
 import numpy as np
 import pandas as pd
 from sklearn.metrics import mean_absolute_error, r2_score
-from sklearn.model_selection import train_test_split
-from xgboost import XGBRegressor
+from sklearn.model_selection import RandomizedSearchCV
+from sklearn.preprocessing import MinMaxScaler
+from xgboost import XGBRegressor  # noqa: E402
 
-from real_madrid_acwr.config import DATA_DIR, MODEL_ARTIFACTS_DIR
+from real_madrid_acwr.config import DAILY_PARQUET, DATA_DIR, MODEL_ARTIFACTS_DIR
 
 warnings.filterwarnings("ignore")
 
-MODEL_ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
+RAW_CSV = DATA_DIR / "raw" / "data_acute_vs_chronic.csv"
+RAW_ZIP = DATA_DIR / "data_acute_vs_chronic.zip"
 
-TARGETS = ["acc_total", "total_distance", "vel_total"]
+TARGETS = ["accelerations", "sprint_distance", "total_distance"]
 
-BASE_FEATURES = [
-    "height", "weight", "age",
-    "has_G", "has_TAC", "has_BP", "has_TEC", "has_MATCH", "n_session_types",
-    "pos_central_back", "pos_central_midfielder", "pos_forward",
-    "pos_full_back", "pos_winger",
-    "days_since_start", "days_since_last_activity", "days_since_last_match",
-]
-
-# Hyperparameters found via RandomizedSearchCV (100 iter, 5-fold CV) in model notebooks; not hand-tuned
-BEST_PARAMS = {
-    "acc_total": dict(
-        objective="reg:tweedie", tweedie_variance_power=1.9,
-        n_estimators=1600, learning_rate=0.005, max_depth=4,
-        min_child_weight=10, subsample=0.8, colsample_bytree=0.7,
-        colsample_bylevel=0.6, gamma=0.3, reg_alpha=1, reg_lambda=5,
-    ),
-    "total_distance": dict(
-        objective="reg:squarederror",
-        n_estimators=600, learning_rate=0.02, max_depth=8,
-        min_child_weight=3, subsample=0.8, colsample_bytree=0.5,
-        colsample_bylevel=0.6, gamma=0.5, reg_alpha=0.01, reg_lambda=0.5,
-    ),
-    "vel_total": dict(
-        objective="reg:squarederror",
-        n_estimators=200, learning_rate=0.07, max_depth=3,
-        min_child_weight=2, subsample=1.0, colsample_bytree=1.0,
-        colsample_bylevel=0.8, gamma=0.3, reg_alpha=10, reg_lambda=5,
-    ),
-}
-
-TRANSFORMS = {
-    "acc_total":      {"type": "none",  "loss": "tweedie"},
-    "total_distance": {"type": "log1p", "inverse": "expm1"},
-    "vel_total":      {"type": "none",  "loss": "mse"},
+# Columns to drop per target before selecting feature_cols (beyond player_id, position)
+EXTRA_DROPS: dict[str, list[str]] = {
+    "accelerations":  ["total_distance"],
+    "sprint_distance": ["total_distance"],
+    "total_distance": [],
 }
 
 
-def main():
+def _load_raw() -> pd.DataFrame:
+    if not RAW_CSV.exists():
+        if not RAW_ZIP.exists():
+            raise FileNotFoundError(
+                f"Missing raw data. Expected {RAW_CSV} or bootstrap archive {RAW_ZIP}."
+            )
+        RAW_CSV.parent.mkdir(parents=True, exist_ok=True)
+        with zipfile.ZipFile(RAW_ZIP) as archive:
+            archive.extract(RAW_CSV.name, path=RAW_CSV.parent)
+    return pd.read_csv(RAW_CSV)
+
+
+def _preprocess(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.rename(columns={
+        "velocity_band6plus7_total_distance": "sprint_distance",
+        "acc_band7plus_total_effort_count":   "accelerations",
+    })
+    df["is_official_match"] = df["is_official_match"].fillna(0)
+    df["player_id"] = df["player_id"].astype("category")
+    df["period_name"]   = df["period_name"].fillna("MATCH")
+    df["exercise_type"] = df["period_name"].str.split(" ").str[0]
+    df = df.drop(columns=["is_official_match"])
+
+    df["period_start_time"] = pd.to_datetime(df["period_start_time"]).dt.tz_localize(None).dt.normalize()
+    df["date_of_birth"]     = pd.to_datetime(df["date_of_birth"]).dt.tz_localize(None).dt.normalize()
+    df["age"] = ((df["period_start_time"] - df["date_of_birth"]).dt.days / 365.25).round(0)
+
+    df = df.dropna(subset=["height", "weight", "position_name_en", "date_of_birth"]).reset_index(drop=True)
+
+    # Fix anomalous match distance for player 94884
+    median_94884 = df[
+        (df["player_id"] == 94884) &
+        (df["exercise_type"] == "MATCH") &
+        (df["total_distance"] <= 20000)
+    ]["total_distance"].median()
+    df.loc[(df["player_id"] == 94884) & (df["total_distance"] >= 20000), "total_distance"] = median_94884
+
+    # Remove trialist placeholders (weight == 200)
+    trialists = df[df["weight"] == 200]["player_id"].unique()
+    df = df[~df["player_id"].isin(trialists)].reset_index(drop=True)
+
+    return df
+
+
+def _build_daily(df: pd.DataFrame) -> pd.DataFrame:
+    et_dummies = pd.get_dummies(df["exercise_type"], prefix="has").astype(int)
+    df_enc = pd.concat([df[["player_id", "period_start_time"]], et_dummies], axis=1)
+    et_daily = (
+        df_enc.groupby(["player_id", "period_start_time"], observed=True)
+        .sum()
+        .reset_index()
+    )
+
+    daily = (
+        df.groupby(["player_id", "period_start_time"], observed=True)
+        .agg(
+            total_distance   = ("total_distance",   "sum"),
+            accelerations    = ("accelerations",    "sum"),
+            sprint_distance  = ("sprint_distance",  "sum"),
+            n_periods        = ("activity_id",      "count"),
+            n_exercise_types = ("exercise_type",    "nunique"),
+            height           = ("height",           "first"),
+            weight           = ("weight",           "first"),
+            age              = ("age",              "first"),
+            position         = ("position_name_en", "first"),
+        )
+        .reset_index()
+        .merge(et_daily, on=["player_id", "period_start_time"])
+        .rename(columns={"period_start_time": "date"})
+        .sort_values(["player_id", "date"])
+        .reset_index(drop=True)
+    )
+
+    # Ensure standard has_ columns are present even if absent in data
+    for col in ["has_G", "has_TAC", "has_BP", "has_TEC", "has_MATCH"]:
+        if col not in daily.columns:
+            daily[col] = 0
+
+    # Build continuous date spine per player, filling gaps with zero load
+    zero_cols   = ["total_distance", "accelerations", "sprint_distance", "n_periods", "n_exercise_types"] + \
+                  [c for c in daily.columns if c.startswith("has_")]
+    static_cols = ["height", "weight", "age", "position"]
+
+    player_date_range = daily.groupby("player_id", observed=True)["date"].agg(["min", "max"])
+    spines = [
+        pd.DataFrame({"player_id": pid, "date": pd.date_range(row["min"], row["max"], freq="D")})
+        for pid, row in player_date_range.iterrows()
+    ]
+    spine = pd.concat(spines, ignore_index=True)
+    spine["player_id"] = spine["player_id"].astype(daily["player_id"].dtype)
+
+    daily = (
+        spine
+        .merge(daily, on=["player_id", "date"], how="left")
+        .sort_values(["player_id", "date"])
+        .reset_index(drop=True)
+    )
+    daily[zero_cols]   = daily[zero_cols].fillna(0)
+    daily[static_cols] = (
+        daily.groupby("player_id", observed=True)[static_cols]
+        .transform(lambda s: s.ffill().bfill())
+    )
+
+    return daily
+
+
+def _add_features(daily_df: pd.DataFrame, target: str) -> pd.DataFrame:
+    d = daily_df.copy().sort_values(["player_id", "date"]).reset_index(drop=True)
+
+    d["day_of_week"] = d["date"].dt.dayofweek
+
+    d["_mc"] = d["date"].dt.to_period("W-SUN")
+    _mc_grp  = d.groupby(["player_id", "_mc"], observed=True)[target]
+    _mc_mean = _mc_grp.transform(lambda s: s.shift(1).fillna(0).expanding().mean())
+    _mc_std  = _mc_grp.transform(lambda s: s.shift(1).fillna(0).expanding().std()).fillna(0)
+    d["microcycle_load_sum"]     = _mc_grp.transform(lambda s: s.shift(1).fillna(0).cumsum())
+    d["microcycle_load_std_dev"] = _mc_std
+    d["monotony"] = np.where(_mc_std == 0, 0, _mc_mean / _mc_std)
+    d["strain"]   = d["microcycle_load_sum"] * d["monotony"]
+    d = d.drop(columns=["_mc"])
+
+    d["acute_load"] = (
+        d.groupby("player_id", observed=True)[target]
+        .transform(lambda s: s.shift(1).ewm(span=7, min_periods=1).mean())
+    )
+    d["chronic_load"] = (
+        d.groupby("player_id", observed=True)[target]
+        .transform(lambda s: s.shift(1).ewm(span=28, min_periods=1).mean())
+    )
+    d["training_stress_balance"] = d["chronic_load"] - d["acute_load"]
+    d["acwr"] = d["acute_load"] / d["chronic_load"].replace(0, np.nan)
+
+    for lag in [1, 3, 5, 7, 14]:
+        d[f"load_lag_{lag}"] = (
+            d.groupby("player_id", observed=True)[target]
+            .transform(lambda s, n=lag: s.shift(n))
+        )
+
+    for window in [3, 7, 14]:
+        d[f"load_ma_{window}"] = (
+            d.groupby("player_id", observed=True)[target]
+            .transform(lambda s, w=window: s.shift(1).rolling(w, min_periods=1).mean())
+        )
+
+    num_cols = d.select_dtypes(include="number").columns
+    d[num_cols] = d[num_cols].fillna(0)
+
+    return d
+
+
+def _date_blocked_cv(dates: np.ndarray, n_splits: int = 4) -> list[tuple[np.ndarray, np.ndarray]]:
+    dates        = np.asarray(dates)
+    unique_dates = np.sort(pd.unique(dates))
+    blocks       = np.array_split(unique_dates, n_splits + 1)
+    splits: list[tuple[np.ndarray, np.ndarray]] = []
+    for i in range(1, n_splits + 1):
+        train_dates = np.concatenate(blocks[:i])
+        val_dates   = blocks[i]
+        train_idx   = np.flatnonzero(np.isin(dates, train_dates))
+        val_idx     = np.flatnonzero(np.isin(dates, val_dates))
+        if len(train_idx) and len(val_idx):
+            splits.append((train_idx, val_idx))
+    return splits
+
+
+def _train_target(
+    daily: pd.DataFrame,
+    target: str,
+    target_dir: Path,
+    n_iter: int = 25,
+    random_state: int = 42,
+) -> None:
+    all_dates = np.sort(daily["date"].unique())
+    cutoff    = all_dates[int(len(all_dates) * 0.8) - 1]
+
+    train_base = daily[daily["date"] <= cutoff].copy().reset_index(drop=True)
+    test_base  = daily[daily["date"] >  cutoff].copy().reset_index(drop=True)
+
+    train = _add_features(train_base, target)
+    test  = _add_features(test_base,  target)
+
+    # log1p transform the target
+    train[target] = np.log1p(train[target])
+    test[target]  = np.log1p(test[target])
+
+    # Drop non-feature columns
+    drop_cols = ["player_id", "position", "date"] + EXTRA_DROPS[target]
+    drop_cols = [c for c in drop_cols if c in train.columns]
+    train = train.drop(columns=drop_cols)
+    test  = test.drop(columns=drop_cols)
+
+    feature_cols = [c for c in train.select_dtypes(include="number").columns if c != target]
+
+    scaler = MinMaxScaler()
+    train[feature_cols] = scaler.fit_transform(train[feature_cols])
+    test[feature_cols]  = scaler.transform(test[feature_cols])
+
+    X_tr, y_tr = train[feature_cols].values, train[target].values
+    X_te, y_te = test[feature_cols].values,  test[target].values
+
+    cv = _date_blocked_cv(train_base["date"].values)
+
+    param_space: dict[str, Any] = {
+        "n_estimators":     [200, 400, 600, 800],
+        "learning_rate":    [0.01, 0.02, 0.05, 0.1],
+        "max_depth":        [3, 4, 5, 6, 8],
+        "min_child_weight": [1, 3, 5, 10],
+        "subsample":        [0.6, 0.7, 0.8, 1.0],
+        "colsample_bytree": [0.5, 0.6, 0.7, 1.0],
+        "gamma":            [0, 0.1, 0.3, 0.5],
+        "reg_lambda":       [0.1, 0.5, 1.0, 5.0],
+    }
+    base_model = XGBRegressor(
+        tree_method="hist",
+        random_state=random_state,
+        n_jobs=-1,
+        verbosity=0,
+    )
+    search = RandomizedSearchCV(
+        estimator=base_model,
+        param_distributions=param_space,
+        n_iter=n_iter,
+        cv=cv,
+        scoring="neg_mean_squared_error",
+        n_jobs=-1,
+        random_state=random_state,
+        refit=True,
+        error_score="raise",
+    )
+    print(f"  Fitting on {len(X_tr)} samples (date-blocked CV)...", end=" ", flush=True)
+    search.fit(X_tr, y_tr)
+    print("done")
+
+    model = search.best_estimator_
+
+    y_pred_log = model.predict(X_te)
+    y_pred     = np.clip(np.expm1(y_pred_log), 0, None)
+    y_true     = np.expm1(y_te)
+
+    mae = mean_absolute_error(y_true, y_pred)
+    r2  = r2_score(y_true, y_pred)
+    print(f"  Test MAE: {mae:.3f}  R²: {r2:.3f}")
+
+    target_dir.mkdir(parents=True, exist_ok=True)
+    bundle = {
+        "model":        model,
+        "scaler":       scaler,
+        "feature_cols": feature_cols,
+        "ewma_spans":   {"acute": 7, "chronic": 28},
+    }
+    joblib.dump(bundle, target_dir / "bundle.joblib")
+    print(f"  Saved: {(target_dir / 'bundle.joblib').relative_to(MODEL_ARTIFACTS_DIR.parent)}")
+
+
+def main() -> None:
     print("=" * 60)
     print("Real Madrid ACWR — Model Training")
     print("=" * 60)
 
-    print("\nLoading model_data.parquet...")
-    df = pd.read_parquet(DATA_DIR / "processed" / "model_data.parquet")
-    print(f"  Rows: {len(df)}  Players: {df['player_id'].nunique()}")
+    print("\nLoading raw data...")
+    df = _load_raw()
+    print(f"  Raw shape: {df.shape}  ({df['player_id'].nunique()} players)")
 
-    player_dummies = pd.get_dummies(df["player_id"], prefix="pid", dtype=int)
-    df = pd.concat([df, player_dummies], axis=1)
-    pid_features = sorted(c for c in df.columns if c.startswith("pid_"))
-    feature_cols = BASE_FEATURES + pid_features
-    print(f"  Features: {len(feature_cols)} ({len(BASE_FEATURES)} base + {len(pid_features)} player IDs)")
+    df = _preprocess(df)
+    print(f"  After preprocessing: {df.shape}")
+
+    daily = _build_daily(df)
+    print(f"  Daily frame: {daily.shape}  ({daily['player_id'].nunique()} players)")
+
+    # Save daily parquet for use at inference time
+    DAILY_PARQUET.parent.mkdir(parents=True, exist_ok=True)
+    daily.to_parquet(DAILY_PARQUET, index=False)
+    print(f"  Saved daily.parquet → {DAILY_PARQUET.relative_to(DATA_DIR.parent)}")
+
+    MODEL_ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
 
     for target in TARGETS:
         print(f"\n{'─' * 60}")
         print(f"  Target: {target}")
-
-        X = df[feature_cols].copy()
-        y = df[target].copy()
-
-        if TRANSFORMS[target]["type"] == "log1p":
-            # total_distance is right-skewed (skew ~3.5); log1p normalises the distribution,
-            # preventing large outliers from dominating MSE during training
-            y_fit = pd.Series(np.log1p(y.to_numpy()), index=y.index, name=y.name)
-            before_skew = cast(float, y.skew())
-            after_skew = cast(float, y_fit.skew())
-            print(f"  Transform: log1p  (skew {before_skew:.2f} → {after_skew:.2f})")
-        else:
-            y_fit = y
-
-        # shuffle=True intentionally: players have overlapping seasons, so a naive time split
-        # would leak future load patterns of other players into training; shuffled split avoids this
-        X_train, X_test, y_train, y_test = train_test_split(
-            X, y_fit, test_size=0.20, random_state=42, shuffle=True
-        )
-
-        params = {
-            **BEST_PARAMS[target],
-            "tree_method": "hist",
-            "random_state": 42,
-            "n_jobs": -1,
-            "verbosity": 0,
-        }
-        model = XGBRegressor(**params)
-
-        print(f"  Fitting on {len(X_train)} samples...", end=" ", flush=True)
-        model.fit(X_train, y_train)
-        print("done")
-
-        y_pred_raw = model.predict(X_test)
-        if TRANSFORMS[target]["type"] == "log1p":
-            y_pred = np.clip(np.expm1(y_pred_raw), 0, None)
-            y_true = np.expm1(y_test)
-        else:
-            y_pred = np.clip(y_pred_raw, 0, None)
-            y_true = y_test
-
-        mae = mean_absolute_error(y_true, y_pred)
-        r2 = r2_score(y_true, y_pred)
-        print(f"  Test MAE: {mae:.3f}  R²: {r2:.3f}")
-
-        target_dir = MODEL_ARTIFACTS_DIR / target
-        target_dir.mkdir(parents=True, exist_ok=True)
-
-        # Must call on the underlying Booster: XGBRegressor.save_model() triggers sklearn type detection and fails
-        model.get_booster().save_model(str(target_dir / "model.json"))
-        with open(target_dir / "feature_cols.pkl", "wb") as f:
-            pickle.dump(feature_cols, f)
-        with open(target_dir / "transform.pkl", "wb") as f:
-            pickle.dump(TRANSFORMS[target], f)
-
-        print(f"  Saved: {target_dir.relative_to(MODEL_ARTIFACTS_DIR.parent)}")
+        _train_target(daily, target, MODEL_ARTIFACTS_DIR / target)
 
     print(f"\n{'=' * 60}")
-    print(f"All models saved to: {MODEL_ARTIFACTS_DIR}")
+    print(f"All bundles saved to: {MODEL_ARTIFACTS_DIR}")
     print("=" * 60)
 
 

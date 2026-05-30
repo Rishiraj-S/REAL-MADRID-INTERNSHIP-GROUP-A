@@ -8,7 +8,7 @@ SEASON_START = pd.Timestamp("2024-07-15")
 # Ordered to match has_* columns in model_data.parquet; changing order breaks feature alignment.
 SESSION_TYPES = ["G", "TAC", "BP", "TEC", "MATCH"]
 PAGES = ["Dashboard", "Planning & Forecast"]
-TARGETS = ("total_distance", "acc_total", "vel_total")
+TARGETS = ("total_distance", "accelerations", "sprint_distance")
 
 # Colors map to Real Madrid's official palette: navy (#00529F), gold (#FEBE10), red (#EE324E).
 TARGET_META = {
@@ -18,14 +18,14 @@ TARGET_META = {
         "color": "#00529F",
         "fill": "rgba(0,82,159,0.12)",
     },
-    "acc_total": {
+    "accelerations": {
         "label": "Accelerations",
         "unit": "efforts",
         "color": "#FEBE10",
         "fill": "rgba(254,190,16,0.12)",
     },
-    "vel_total": {
-        "label": "High-Speed Running",
+    "sprint_distance": {
+        "label": "Sprint Distance",
         "unit": "m",
         "color": "#EE324E",
         "fill": "rgba(238,50,78,0.12)",
@@ -89,8 +89,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "zone_unknown": "—",
         # Targets
         "target_total_distance": "Total Distance",
-        "target_acc_total": "Accelerations",
-        "target_vel_total": "High-Speed Running",
+        "target_accelerations": "Accelerations",
+        "target_sprint_distance": "Sprint Distance",
         "target_acwr_unit": "ACWR (unitless)",
         # Planner page
         "planner_title": "Planning & <span>Forecast</span>",
@@ -147,6 +147,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "sidebar_season": "Season 2024/25",
         "sidebar_players_metrics": "28 Players &nbsp;&middot;&nbsp; 3 Metrics",
         "sidebar_developed_by": "Developed by",
+        "sidebar_language": "Language",
         # Player positions
         "pos_central_back": "Central Back",
         "pos_central_midfielder": "Central Midfielder",
@@ -185,8 +186,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "zone_unknown": "—",
         # Targets
         "target_total_distance": "Distancia Total",
-        "target_acc_total": "Aceleraciones",
-        "target_vel_total": "Carrera de Alta Velocidad",
+        "target_accelerations": "Aceleraciones",
+        "target_sprint_distance": "Distancia de Sprint",
         "target_acwr_unit": "ACWR (adimensional)",
         # Planner page
         "planner_title": "Planificación y <span>Pronóstico</span>",
@@ -243,6 +244,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "sidebar_season": "Temporada 2024/25",
         "sidebar_players_metrics": "28 Jugadores &nbsp;&middot;&nbsp; 3 Métricas",
         "sidebar_developed_by": "Desarrollado por",
+        "sidebar_language": "Idioma",
         # Player positions
         "pos_central_back": "Defensa Central",
         "pos_central_midfielder": "Centrocampista",

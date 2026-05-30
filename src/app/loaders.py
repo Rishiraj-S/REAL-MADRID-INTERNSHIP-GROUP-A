@@ -7,9 +7,9 @@ from typing import Any
 import pandas as pd
 import streamlit as st
 
-from app.constants import SEASON_START, TARGETS
+from app.constants import TARGETS
 from real_madrid_acwr.acwr import classify_acwr_zone, compute_acwr
-from real_madrid_acwr.config import DATA_DIR
+from real_madrid_acwr.config import DAILY_PARQUET
 
 
 @st.cache_resource
@@ -37,30 +37,25 @@ def get_models_or_stop():
 
 @st.cache_resource
 def load_player_data():
-    df = pd.read_parquet(DATA_DIR / "processed" / "model_data.parquet")
-    df["date"] = SEASON_START + pd.to_timedelta(df["days_since_start"], unit="D")
+    daily_df = pd.read_parquet(DAILY_PARQUET)
+    daily_df["date"] = pd.to_datetime(daily_df["date"])
 
-    all_pids = sorted(df["player_id"].unique().tolist())
+    all_pids = sorted(daily_df["player_id"].unique().tolist())
     player_data: dict[Any, dict[str, Any]] = {}
 
-    for pid, grp in df.groupby("player_id"):
+    for pid, grp in daily_df.groupby("player_id"):
         grp = grp.sort_values("date").reset_index(drop=True)
         start_date = pd.Timestamp(grp["date"].min())
-        end_date = pd.Timestamp(grp["date"].max())
+        end_date   = pd.Timestamp(grp["date"].max())
         dr = pd.date_range(start_date, end_date, freq="D")
-        # Left-merge creates a complete daily calendar grid; fillna(0) ensures rest days carry
-        # zero load rather than NaN — EWMA accumulates over every calendar day, so gaps must be 0
-        merged = pd.DataFrame({"date": dr}).merge(
-            grp[["date", "total_distance", "acc_total", "vel_total", "has_MATCH"]],
-            on="date", how="left",
-        ).fillna({"total_distance": 0.0, "acc_total": 0.0, "vel_total": 0.0, "has_MATCH": 0})
 
-        pos_label = "Unknown"
-        for col in ["pos_central_back", "pos_central_midfielder", "pos_forward",
-                    "pos_full_back", "pos_winger"]:
-            if int(grp.iloc[-1][col]) == 1:
-                pos_label = col.replace("pos_", "").replace("_", " ").title()
-                break
+        # Complete daily calendar grid; fillna(0) ensures rest days carry zero load
+        merged = pd.DataFrame({"date": dr}).merge(
+            grp[["date", "total_distance", "accelerations", "sprint_distance", "has_MATCH"]],
+            on="date", how="left",
+        ).fillna({"total_distance": 0.0, "accelerations": 0.0, "sprint_distance": 0.0, "has_MATCH": 0})
+
+        pos_label = str(grp.iloc[-1]["position"]) if "position" in grp.columns else "Unknown"
 
         match_rows = grp[grp["has_MATCH"] == 1]
         player_data[pid] = {
@@ -85,4 +80,4 @@ def load_player_data():
                 "zone":  classify_acwr_zone(val) if val is not None else "unknown",
             }
 
-    return player_data, all_pids, current_acwr
+    return player_data, all_pids, current_acwr, daily_df

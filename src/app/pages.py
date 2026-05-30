@@ -72,7 +72,7 @@ def _render_standard_header(title: str, subtitle: str) -> None:
 
 def page_dashboard() -> None:
     """Render the squad-level ACWR status dashboard."""
-    player_data, all_pids, current_acwr = load_player_data()
+    player_data, all_pids, current_acwr, _ = load_player_data()
     get_models_or_stop()
     last_date = fmt_date_full(player_data[all_pids[0]]["last_active"])
 
@@ -649,9 +649,9 @@ def _render_schedule_sidebar(
                 f"</div>",
                 unsafe_allow_html=True,
             )
-            if edit_col.button("✏️", key=f"edit_event_{event_id}", use_container_width=True):
+            if edit_col.button("✏️", key=f"edit_event_{event_id}", width="stretch"):
                 _open_event_dialog({"mode": "edit", "event_id": event_id})
-            if del_col.button("🗑️", key=f"delete_event_{event_id}", use_container_width=True):
+            if del_col.button("🗑️", key=f"delete_event_{event_id}", width="stretch"):
                 _remove_event(event_id)
                 st.rerun()
 
@@ -748,7 +748,7 @@ def _render_forecast_results(
         metric_forecast = forecast[selected_pid][metric]
         meta_translated = {**meta, "label": t(f"target_{metric}")}
         fig = build_acwr_chart(metric_forecast, meta_translated)
-        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+        st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
 
     st.markdown("---")
     st.markdown(f'<div class="section-label">{t("section_day15_summary")}</div>', unsafe_allow_html=True)
@@ -858,7 +858,7 @@ def _event_editor_dialog(plan_dates: list[pd.Timestamp]) -> None:
     notes_text = notes_value or ""
 
     save_col, cancel_col = st.columns(2)
-    if save_col.button(t("dialog_save"), type="primary", use_container_width=True):
+    if save_col.button(t("dialog_save"), type="primary", width="stretch"):
         if not session_types:
             st.error(t("dialog_err_no_types"))
             st.stop()
@@ -883,12 +883,12 @@ def _event_editor_dialog(plan_dates: list[pd.Timestamp]) -> None:
         st.session_state.pop("_dialog_event_id", None)
         st.rerun()
 
-    if cancel_col.button(t("dialog_cancel"), use_container_width=True):
+    if cancel_col.button(t("dialog_cancel"), width="stretch"):
         st.session_state.planner_dialog_request = None
         st.session_state.pop("_dialog_event_id", None)
         st.rerun()
 
-    if current_event is not None and st.button(t("dialog_delete"), type="secondary", use_container_width=True):
+    if current_event is not None and st.button(t("dialog_delete"), type="secondary", width="stretch"):
         _remove_event(str(current_event["id"]))
         st.session_state.planner_dialog_request = None
         st.session_state.pop("_dialog_event_id", None)
@@ -897,7 +897,7 @@ def _event_editor_dialog(plan_dates: list[pd.Timestamp]) -> None:
 
 def page_planner() -> None:
     """Render the unified planning and forecasting workspace."""
-    player_data, all_pids, _ = load_player_data()
+    player_data, all_pids, _, _daily = load_player_data()
     get_models_or_stop()
     last_active = player_data[all_pids[0]]["last_active"]
     plan_dates = build_planning_window(last_active)
@@ -928,10 +928,10 @@ def page_planner() -> None:
         _handle_calendar_interactions(plan_dates)
         st.markdown("<div style='margin-top:0.75rem'></div>", unsafe_allow_html=True)
         action_cols = st.columns([1, 1.3])
-        if action_cols[0].button(t("btn_clear_plan"), type="secondary", use_container_width=True):
+        if action_cols[0].button(t("btn_clear_plan"), type="secondary", width="stretch"):
             st.session_state.plan_events = []
             st.rerun()
-        if action_cols[1].button(t("btn_run_forecast"), type="primary", use_container_width=True):
+        if action_cols[1].button(t("btn_run_forecast"), type="primary", width="stretch"):
             _run_forecast(plan_dates)
             st.rerun()
     with schedule_col:
@@ -1011,7 +1011,7 @@ def render_sidebar(logo_path):
         </div>""", unsafe_allow_html=True)
 
         st.radio(
-            "",
+            t("sidebar_language"),
             ["ENG", "ESP"],
             key="lang",
             horizontal=True,

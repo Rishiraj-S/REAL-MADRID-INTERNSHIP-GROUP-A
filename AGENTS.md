@@ -26,10 +26,10 @@ src/real_madrid_acwr/acwr.py                <- EWMA-ACWR utilities
 src/real_madrid_acwr/config.py              <- Shared project paths
 src/real_madrid_acwr/modeling/train.py      <- Model training implementation
 
-notebooks/data_pipeline.ipynb               <- Produces data/processed/model_data.parquet
-notebooks/acc_total.ipynb                   <- EDA + model exploration (acc_total)
+notebooks/data_pipeline.ipynb               <- Produces data/processed/model_data.parquet (legacy)
+notebooks/acceleration_model.ipynb          <- EDA + model exploration (accelerations)
+notebooks/sprint_distance_model.ipynb       <- EDA + model exploration (sprint_distance)
 notebooks/total_distance.ipynb              <- EDA + model exploration (total_distance)
-notebooks/vel_total.ipynb                   <- EDA + model exploration (vel_total)
 
 data/processed/model_data.parquet           <- Bridge between pipeline and app/models
 models/                                     <- XGBoost JSON artifacts + pkl metadata
@@ -76,16 +76,23 @@ python train_models.py
 
 ## Model artifacts
 
-Each of the three targets has three files:
+Targets: `accelerations`, `sprint_distance`, `total_distance`.
+
+Each target has one artifact file:
 
 | File | Content |
 |---|---|
-| `models/xgboost/{target}/model.json` | XGBoost `Booster` in native JSON format |
-| `models/xgboost/{target}/feature_cols.pkl` | Ordered list of 45 feature names |
-| `models/xgboost/{target}/transform.pkl` | Dict with `type` (`log1p` or `none`) for inverse-transform |
+| `models/xgboost/{target}/bundle.joblib` | `joblib`-serialised dict: `model` (XGBRegressor), `scaler` (MinMaxScaler), `feature_cols` (list[str]), `ewma_spans` (dict) |
 
-The app loads models with `xgb.Booster().load_model()` and does not load sklearn
-Pipeline pickles at runtime.
+The app loads bundles with `joblib.load()`. Prediction uses `model.predict(scaler.transform(X))` with a log1p inverse transform (`np.expm1`).
+
+A processed daily history file is also required at inference time:
+
+| File | Content |
+|---|---|
+| `data/processed/daily.parquet` | Raw daily frame per player with all load columns and session flags |
+
+Both files are produced by `python train_models.py`.
 
 ## Important conventions
 

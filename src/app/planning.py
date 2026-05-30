@@ -8,7 +8,7 @@ from datetime import date, datetime, time, timedelta
 
 import pandas as pd
 
-from app.constants import SESSION_LABELS, SESSION_TYPES
+from app.constants import SESSION_TYPES
 
 PLANNING_HORIZON_DAYS = 15
 DEFAULT_EVENT_DURATION_MINUTES = 90
@@ -68,13 +68,6 @@ def combine_date_and_time(day: date, clock: time) -> datetime:
     return datetime.combine(day, clock)
 
 
-def clamp_date_to_window(day: date, plan_dates: list[pd.Timestamp]) -> date:
-    """Clamp an arbitrary date into the supported 15-day planning window."""
-    lower = plan_dates[0].date()
-    upper = plan_dates[-1].date()
-    return min(max(day, lower), upper)
-
-
 def normalise_event_types(raw_types: Iterable[object]) -> list[str]:
     """Return session types in model-compatible order."""
     selected = {str(value) for value in raw_types if str(value) in SESSION_TYPES}
@@ -132,28 +125,6 @@ def sort_events(events: Iterable[Mapping[str, object]]) -> list[EventDict]:
     return sorted((dict(event) for event in events), key=lambda item: (str(item["start"]), str(item["id"])))
 
 
-def build_calendar_events(events: Iterable[Mapping[str, object]]) -> list[EventDict]:
-    """Project planner state into FullCalendar-compatible event objects."""
-    calendar_events: list[EventDict] = []
-    for event in sort_events(events):
-        event_types = _mapping_session_types(event)
-        calendar_events.append(
-            {
-                "id": str(event["id"]),
-                "title": compose_event_title(event_types, str(event.get("location", ""))),
-                "start": str(event["start"]),
-                "end": str(event.get("end") or ""),
-                "allDay": bool(event.get("allDay", False)),
-                "extendedProps": {
-                    "session_types": event_types,
-                    "location": str(event.get("location", "")),
-                    "notes": str(event.get("notes", "")),
-                },
-            }
-        )
-    return calendar_events
-
-
 def build_plan_days_from_events(
     events: Iterable[Mapping[str, object]],
     plan_dates: list[pd.Timestamp],
@@ -199,16 +170,6 @@ def plan_signature(plan_days: Iterable[Mapping[str, bool]]) -> str:
     ]
     return json.dumps(payload, sort_keys=True, separators=(",", ":"))
 
-
-def describe_event(event: Mapping[str, object]) -> str:
-    """Return a readable summary for secondary planner surfaces."""
-    start_dt = event_start_datetime(event)
-    types = _mapping_session_types(event)
-    type_labels = [SESSION_LABELS.get(session_type, session_type) for session_type in types]
-    return (
-        f"{start_dt.strftime('%a %d %b')}"
-        f" · {', '.join(type_labels) if type_labels else 'No session types'}"
-    )
 
 
 

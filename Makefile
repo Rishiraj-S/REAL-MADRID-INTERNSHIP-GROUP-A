@@ -12,7 +12,7 @@ install-notebooks:
 	$(PYTHON) -m pip install -e ".[notebooks]"
 
 lint:
-	ruff check main.py train_models.py src tests utils
+	ruff check main.py train_models.py src tests
 
 typecheck:
 	mypy

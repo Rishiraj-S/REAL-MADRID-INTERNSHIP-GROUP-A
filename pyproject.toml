@@ -54,7 +54,6 @@ target-version = "py311"
 line-length = 100
 extend-exclude = [
     "notebooks",
-    "utils/data_pipeline.py",
 ]
 
 [tool.ruff.lint]

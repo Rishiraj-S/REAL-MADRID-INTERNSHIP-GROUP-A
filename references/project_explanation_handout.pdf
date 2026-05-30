@@ -1,0 +1,248 @@
+%PDF-1.4
+%‚„œ”
+1 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+2 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>
+endobj
+3 0 obj
+<< /Length 4556 >>
+stream
+0.000 0.322 0.624 rg
+BT /F2 18 Tf 52.0 790.0 Td (Real Madrid ACWR Project) Tj ET
+0 0 0 rg
+BT /F1 11 Tf 52.0 768.0 Td (Student Presentation Handout) Tj ET
+0.000 0.322 0.624 rg
+BT /F2 14 Tf 52.0 736.0 Td (One-Sentence Summary) Tj ET
+0 0 0 rg
+BT /F1 10.5 Tf 52.0 718.0 Td (This project is an interactive tool that helps football fitness coaches test a future) Tj ET
+0 0 0 rg
+BT /F1 10.5 Tf 64.0 704.0 Td (  training plan and see whether each player's workload is likely to become too low,) Tj ET
+0 0 0 rg
+BT /F1 10.5 Tf 64.0 690.0 Td (  normal, or risky over the next 15 days.) Tj ET
+0.000 0.322 0.624 rg
+BT /F2 14 Tf 52.0 664.0 Td (1. The Main Sport-Science Idea) Tj ET
+0 0 0 rg
+BT /F1 10.5 Tf 52.0 646.0 Td (The project focuses on ACWR, which means Acute:Chronic Workload Ratio.) Tj ET
+0 0 0 rg
+BT /F1 10.5 Tf 52.0 629.0 Td (- Acute workload: how much load the player has had recently, roughly the last 7 days.) Tj ET
+0 0 0 rg
+BT /F1 10.5 Tf 52.0 612.0 Td (- Chronic workload: the player's longer-term fitness/load base, roughly the last 28) Tj ET
+0 0 0 rg
+BT /F1 10.5 Tf 64.0 598.0 Td (  days.) Tj ET
+0 0 0 rg
+BT /F1 10.5 Tf 52.0 581.0 Td (- ACWR: acute workload divided by chronic workload.) Tj ET
+0 0 0 rg
+BT /F1 10.5 Tf 52.0 564.0 Td (In simple terms: ACWR = recent workload / normal longer-term workload.) Tj ET
+0 0 0 rg
+BT /F1 10.5 Tf 52.0 547.0 Td (If a player suddenly has a very hard week compared with what he has been used to over) Tj ET
+0 0 0 rg
+BT /F1 10.5 Tf 64.0 533.0 Td (  the last month, his ACWR rises.) Tj ET
+0.000 0.322 0.624 rg
+BT /F2 14 Tf 52.0 507.0 Td (2. How To Interpret ACWR) Tj ET
+0 0 0 rg
+BT /F1 10.5 Tf 52.0 489.0 Td (Undertraining: ACWR < 0.8. The player may not be receiving enough load stimulus.) Tj ET
+0 0 0 rg
+BT /F1 10.5 Tf 52.0 472.0 Td (Optimal: ACWR 0.8 to 1.3. The player is in a generally safe training range.) Tj ET
+0 0 0 rg
+BT /F1 10.5 Tf 52.0 455.0 Td (Caution: ACWR 1.3 to 1.5. The player may be approaching elevated workload risk.) Tj ET
+0.933 0.196 0.306 rg
+BT /F1 10.5 Tf 52.0 438.0 Td (Danger: ACWR >= 1.5. The player may be overloaded and should be monitored closely.) Tj ET
+0.933 0.196 0.306 rg
+BT /F1 10.5 Tf 52.0 421.0 Td (Important: this tool does not predict injuries directly. It predicts workload risk) Tj ET
+0.933 0.196 0.306 rg
+BT /F1 10.5 Tf 64.0 407.0 Td (  signals. Coaches should combine it with medical information, wellness data, player) Tj ET
+0.933 0.196 0.306 rg
+BT /F1 10.5 Tf 64.0 393.0 Td (  feedback, tactical needs, and staff judgment.) Tj ET
+0.000 0.322 0.624 rg
+BT /F2 14 Tf 52.0 367.0 Td (3. What The Tool Does) Tj ET
+0 0 0 rg
+BT /F1 10.5 Tf 52.0 349.0 Td (The tool lets coaches answer questions like: If we plan these sessions for the next 15) Tj ET
+0 0 0 rg
+BT /F1 10.5 Tf 64.0 335.0 Td (  days, which players might enter a risky workload zone?) Tj ET
+0 0 0 rg
+BT /F1 10.5 Tf 52.0 318.0 Td (The coach does not need to write code. They use a Streamlit app with two main parts:) Tj ET
+0 0 0 rg
+BT /F1 10.5 Tf 52.0 301.0 Td (- Dashboard: shows the current ACWR status of the squad.) Tj ET
+0 0 0 rg
+BT /F1 10.5 Tf 52.0 284.0 Td (- Planning and Forecast: lets the coach create a 15-day plan and then forecasts future) Tj ET
+0 0 0 rg
+BT /F1 10.5 Tf 64.0 270.0 Td (  ACWR.) Tj ET
+0 0 0 rg
+BT /F1 10.5 Tf 52.0 253.0 Td (Planned session types: G = game-based work / small-sided games; TAC = tactical; BP =) Tj ET
+0 0 0 rg
+BT /F1 10.5 Tf 64.0 239.0 Td (  set pieces; TEC = technical; MATCH = official match; REST = no planned load.) Tj ET
+0.000 0.322 0.624 rg
+BT /F2 14 Tf 52.0 213.0 Td (4. The Three Workload Metrics) Tj ET
+0 0 0 rg
+BT /F1 10.5 Tf 52.0 195.0 Td (The project calculates ACWR separately for three football GPS/IMU metrics:) Tj ET
+0 0 0 rg
+BT /F1 10.5 Tf 52.0 178.0 Td (- Total Distance: overall running volume. This reflects general aerobic and movement) Tj ET
+0 0 0 rg
+BT /F1 10.5 Tf 64.0 164.0 Td (  load.) Tj ET
+0 0 0 rg
+BT /F1 10.5 Tf 52.0 147.0 Td (- Accelerations: high-intensity acceleration efforts. This reflects neuromuscular) Tj ET
+0 0 0 rg
+BT /F1 10.5 Tf 64.0 133.0 Td (  stress.) Tj ET
+0 0 0 rg
+BT /F1 10.5 Tf 52.0 116.0 Td (- High-Speed Running: distance covered at high speed. This is important for sprint) Tj ET
+0 0 0 rg
+BT /F1 10.5 Tf 64.0 102.0 Td (  exposure and high-speed running demands.) Tj ET
+0 0 0 rg
+BT /F1 10.5 Tf 52.0 85.0 Td (This matters because a player can look safe in total distance but risky in high-speed) Tj ET
+0 0 0 rg
+BT /F1 10.5 Tf 64.0 71.0 Td (  running, or the opposite.) Tj ET
+0.35 0.39 0.45 rg
+BT /F1 8 Tf 277.5 30 Td (1) Tj ET
+endstream
+endobj
+4 0 obj
+<< /Length 4742 >>
+stream
+0.000 0.322 0.624 rg
+BT /F2 18 Tf 52.0 790.0 Td (Real Madrid ACWR Project) Tj ET
+0 0 0 rg
+BT /F1 11 Tf 52.0 768.0 Td (Student Presentation Handout) Tj ET
+0.000 0.322 0.624 rg
+BT /F2 14 Tf 52.0 736.0 Td (5. How The Project Works) Tj ET
+0 0 0 rg
+BT /F1 10.5 Tf 52.0 718.0 Td (1. Historical player data is collected: past sessions, matches, player positions,) Tj ET
+0 0 0 rg
+BT /F1 10.5 Tf 64.0 704.0 Td (  height, weight, age, and GPS workload metrics.) Tj ET
+0 0 0 rg
+BT /F1 10.5 Tf 52.0 687.0 Td (2. The data is cleaned and organized by day: the original drill-level data becomes one) Tj ET
+0 0 0 rg
+BT /F1 10.5 Tf 64.0 673.0 Td (  row per player per day.) Tj ET
+0 0 0 rg
+BT /F1 10.5 Tf 52.0 656.0 Td (3. The project learns patterns from the past: for example, how much load a tactical) Tj ET
+0 0 0 rg
+BT /F1 10.5 Tf 64.0 642.0 Td (  session usually creates for a player or position.) Tj ET
+0 0 0 rg
+BT /F1 10.5 Tf 52.0 625.0 Td (4. The coach enters a future plan: for example, tactical session tomorrow, match in) Tj ET
+0 0 0 rg
+BT /F1 10.5 Tf 64.0 611.0 Td (  three days, recovery day after that.) Tj ET
+0 0 0 rg
+BT /F1 10.5 Tf 52.0 594.0 Td (5. The model predicts future daily loads for every player and every future day.) Tj ET
+0 0 0 rg
+BT /F1 10.5 Tf 52.0 577.0 Td (6. The app recalculates future ACWR by combining each player's real past workload with) Tj ET
+0 0 0 rg
+BT /F1 10.5 Tf 64.0 563.0 Td (  the predicted future workload.) Tj ET
+0 0 0 rg
+BT /F1 10.5 Tf 52.0 546.0 Td (7. The app shows risk zones: optimal, undertraining, caution, or danger.) Tj ET
+0.000 0.322 0.624 rg
+BT /F2 14 Tf 52.0 520.0 Td (6. Simple Analogy) Tj ET
+0 0 0 rg
+BT /F1 10.5 Tf 52.0 502.0 Td (Think of each player like a car engine.) Tj ET
+0 0 0 rg
+BT /F1 10.5 Tf 52.0 485.0 Td (- The chronic workload is what the engine is used to handling.) Tj ET
+0 0 0 rg
+BT /F1 10.5 Tf 52.0 468.0 Td (- The acute workload is what we are asking it to do this week.) Tj ET
+0 0 0 rg
+BT /F1 10.5 Tf 52.0 451.0 Td (- If we suddenly ask too much compared with its normal level, the risk light turns on.) Tj ET
+0.000 0.322 0.624 rg
+BT /F2 14 Tf 52.0 425.0 Td (7. Suggested Presentation Structure) Tj ET
+0 0 0 rg
+BT /F1 10.5 Tf 52.0 407.0 Td (1. Problem: coaches need to plan training while avoiding sudden workload spikes.) Tj ET
+0 0 0 rg
+BT /F1 10.5 Tf 52.0 390.0 Td (2. Sport-Science Concept: explain acute workload, chronic workload, ACWR, and the risk) Tj ET
+0 0 0 rg
+BT /F1 10.5 Tf 64.0 376.0 Td (  zones.) Tj ET
+0 0 0 rg
+BT /F1 10.5 Tf 52.0 359.0 Td (3. Data: football training and match data, player profile, position, session type, and) Tj ET
+0 0 0 rg
+BT /F1 10.5 Tf 64.0 345.0 Td (  GPS load metrics.) Tj ET
+0 0 0 rg
+BT /F1 10.5 Tf 52.0 328.0 Td (4. Model: the project learns from previous sessions to estimate future load.) Tj ET
+0 0 0 rg
+BT /F1 10.5 Tf 52.0 311.0 Td (5. App: a coach creates a 15-day schedule, then the app forecasts ACWR and highlights) Tj ET
+0 0 0 rg
+BT /F1 10.5 Tf 64.0 297.0 Td (  risk alerts.) Tj ET
+0 0 0 rg
+BT /F1 10.5 Tf 52.0 280.0 Td (6. Value: faster planning, player-specific monitoring, and clearer communication) Tj ET
+0 0 0 rg
+BT /F1 10.5 Tf 64.0 266.0 Td (  between data staff and fitness coaches.) Tj ET
+0 0 0 rg
+BT /F1 10.5 Tf 52.0 249.0 Td (7. Limitations: no wellness or RPE data, ACWR is not a medical diagnosis, and results) Tj ET
+0 0 0 rg
+BT /F1 10.5 Tf 64.0 235.0 Td (  depend on historical data quality.) Tj ET
+0.000 0.322 0.624 rg
+BT /F2 14 Tf 52.0 209.0 Td (8. One-Minute Presentation Script) Tj ET
+0 0 0 rg
+BT /F1 10.5 Tf 52.0 191.0 Td (This project is a workload planning tool for football fitness coaches. It uses past GPS) Tj ET
+0 0 0 rg
+BT /F1 10.5 Tf 64.0 177.0 Td (  training and match data to understand how different session types affect each player.) Tj ET
+0 0 0 rg
+BT /F1 10.5 Tf 64.0 163.0 Td (  The key metric is ACWR, which compares recent workload over about 7 days with longer-) Tj ET
+0 0 0 rg
+BT /F1 10.5 Tf 64.0 149.0 Td (  term workload over about 28 days. If the recent load is too high compared with the) Tj ET
+0 0 0 rg
+BT /F1 10.5 Tf 64.0 135.0 Td (  player's normal base, the player may enter a caution or danger zone.) Tj ET
+0 0 0 rg
+BT /F1 10.5 Tf 52.0 118.0 Td (In the app, a coach builds a 15-day training plan, and the system predicts how each) Tj ET
+0 0 0 rg
+BT /F1 10.5 Tf 64.0 104.0 Td (  player's total distance, accelerations, and high-speed running will evolve. Then it) Tj ET
+0 0 0 rg
+BT /F1 10.5 Tf 64.0 90.0 Td (  calculates future ACWR and highlights players who may be undertrained or overloaded.) Tj ET
+0 0 0 rg
+BT /F1 10.5 Tf 64.0 76.0 Td (  The goal is not to replace coaches, but to give them a clear decision-support tool) Tj ET
+0.35 0.39 0.45 rg
+BT /F1 8 Tf 277.5 30 Td (2) Tj ET
+endstream
+endobj
+5 0 obj
+<< /Length 858 >>
+stream
+0.000 0.322 0.624 rg
+BT /F2 18 Tf 52.0 790.0 Td (Real Madrid ACWR Project) Tj ET
+0 0 0 rg
+BT /F1 11 Tf 52.0 768.0 Td (Student Presentation Handout) Tj ET
+0 0 0 rg
+BT /F1 10.5 Tf 64.0 740.0 Td (  before finalizing the training plan.) Tj ET
+0.000 0.322 0.624 rg
+BT /F2 14 Tf 52.0 714.0 Td (9. Short Version For A Slide) Tj ET
+0 0 0 rg
+BT /F1 10.5 Tf 52.0 696.0 Td (Project purpose: forecast player workload risk before a training plan is finalized.) Tj ET
+0 0 0 rg
+BT /F1 10.5 Tf 52.0 679.0 Td (Input: past GPS data + player profile + planned 15-day session schedule.) Tj ET
+0 0 0 rg
+BT /F1 10.5 Tf 52.0 662.0 Td (Output: future ACWR curves and risk zones for each player.) Tj ET
+0 0 0 rg
+BT /F1 10.5 Tf 52.0 645.0 Td (Main value: helps coaches identify players who may be undertrained or overloaded.) Tj ET
+0.35 0.39 0.45 rg
+BT /F1 8 Tf 277.5 30 Td (3) Tj ET
+endstream
+endobj
+6 0 obj
+<< /Type /Page /Parent 9 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 1 0 R /F2 2 0 R >> >> /Contents 3 0 R >>
+endobj
+7 0 obj
+<< /Type /Page /Parent 9 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 1 0 R /F2 2 0 R >> >> /Contents 4 0 R >>
+endobj
+8 0 obj
+<< /Type /Page /Parent 9 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 1 0 R /F2 2 0 R >> >> /Contents 5 0 R >>
+endobj
+9 0 obj
+<< /Type /Pages /Kids [6 0 R 7 0 R 8 0 R] /Count 3 >>
+endobj
+10 0 obj
+<< /Type /Catalog /Pages 9 0 R >>
+endobj
+xref
+0 11
+0000000000 65535 f 
+0000000015 00000 n 
+0000000085 00000 n 
+0000000160 00000 n 
+0000004767 00000 n 
+0000009560 00000 n 
+0000010468 00000 n 
+0000010604 00000 n 
+0000010740 00000 n 
+0000010876 00000 n 
+0000010945 00000 n 
+trailer
+<< /Size 11 /Root 10 0 R >>
+startxref
+10995
+%%EOF

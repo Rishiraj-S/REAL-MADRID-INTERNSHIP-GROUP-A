@@ -34,3 +34,5 @@ data/interim/*
 
 # Local generated notebook exports
 utils/data_pipeline.py
+models/notebook_experiments/*
+!models/notebook_experiments/.gitkeep

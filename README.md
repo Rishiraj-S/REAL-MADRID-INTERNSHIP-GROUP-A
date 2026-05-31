@@ -55,35 +55,39 @@ Training categories extracted from `period_name` prefix:
 | **TEC** | Technical |
 | **MATCH** | Official Match |
 
-### 2. Data Pipeline (`notebooks/data_pipeline.ipynb`)
+### 2. Data Pipeline
+
+`python train_models.py` handles the full pipeline end-to-end:
 
 | Step | Output |
 |---|---|
-| Raw load & type coercion | Cleaned `df` (3,802 rows, 28 players) |
-| Outlier treatment | Player 94884 `total_distance` replaced with player median; `weight=200` players dropped |
-| Daily aggregation | `daily` — one row per `(player_id, date)`, loads summed |
-| Feature engineering | Session flags (`has_G`, `has_TAC`, …), position one-hots, calendar features, activity history |
-| Persist | `data/processed/model_data.parquet` |
+| Raw load & type coercion | Cleaned frame (28 players) |
+| Outlier treatment | Player 94884 `total_distance` capped at player median; `weight=200` trialists dropped |
+| Daily aggregation | One row per `(player_id, date)`, loads summed, rest days filled with zero |
+| Feature engineering | EWMA lags, rolling MAs, microcycle stats, session type flags, calendar features |
+| Persist | `data/processed/daily.parquet` |
 
-### 3. Load Prediction Models (`src/real_madrid_acwr/modeling/train.py`)
+### 3. Load Prediction Models
 
-Three independent XGBoost models — one per load metric — trained via the package
-training module. The root `train_models.py` file remains as a compatibility
-wrapper, so `python train_models.py` still works after the project is installed.
-Hyperparameters were found via RandomizedSearchCV (100 iterations, 5-fold CV)
-in the model notebooks.
+Three independent XGBoost models — one per load metric — trained via `src/real_madrid_acwr/modeling/train.py`. `train_models.py` at the root is the CLI entry point.
 
-| Target | Loss | Test MAE | Test R² | Notes |
-|---|---|---|---|---|
-| `total_distance` | log-MSE | ≈ 800 m | ≈ 0.43 | log1p transform; right-skewed distribution |
-| `acc_total` | Tweedie (p=1.9) | ≈ 3.63 efforts | ≈ 0.38 | Count data; Tweedie handles zero-inflation |
-| `vel_total` | Raw MSE | ≈ 18.3 m | ≈ 0.16 | SHAP feature selection applied (Round 2) |
+| Target | Transform | Notes |
+|---|---|---|
+| `total_distance` | log1p | Right-skewed aerobic volume |
+| `accelerations` | log1p | High-intensity effort count |
+| `sprint_distance` | log1p | High-speed running distance |
 
-**Feature vector (45 features):**
-- 17 base features: anthropometrics, session type flags, position one-hots, calendar/activity history
-- 28 `pid_*` player one-hot columns (one per squad member)
+**Feature engineering (per target):**
+- Lagged loads: t-1, t-3, t-5, t-7, t-14
+- Rolling means: 3, 7, 14 days
+- Shifted EWMA acute (span 7) and chronic (span 28)
+- Microcycle cumsum, monotony, strain, training stress balance
+- Session type flags: `has_G`, `has_TAC`, `has_BP`, `has_TEC`, `has_MATCH`
+- `n_periods`, `n_exercise_types`, `day_of_week`, anthropometrics
 
-Models are saved as **XGBoost native JSON** under `models/xgboost/{target}/model.json` — not sklearn Pipeline pickle — to avoid scipy binary incompatibilities across conda environments.
+Training uses date-blocked 4-fold CV (no data leakage) with `RandomizedSearchCV` over XGBoost hyperparameters (25 iterations).
+
+Model artifacts saved as `models/xgboost/{target}/bundle.joblib` — a `joblib`-serialised dict containing `model`, `scaler`, `feature_cols`, and `ewma_spans`.
 
 ### 4. ACWR Utilities (`src/real_madrid_acwr/acwr.py`)
 
@@ -92,7 +96,7 @@ Core EWMA computation library:
 | Function | Description |
 |---|---|
 | `compute_acwr(daily_loads)` | EWMA-ACWR for a single player's load series |
-| `compute_acwr_with_forecast(hist, fore)` | Stitches historical + forecast loads, returns full ACWR series with `is_forecast` flag |
+| `compute_acwr_with_forecast(hist, fore)` | Stitches historical + forecast loads; returns full ACWR series with `is_forecast` flag |
 | `classify_acwr_zone(value)` | Maps ACWR value to risk zone string |
 
 **EWMA parameters:**
@@ -102,24 +106,21 @@ Core EWMA computation library:
 
 ### 5. Interactive Application (`main.py`)
 
-A Streamlit single-file application with three pages:
+A Streamlit application with two pages:
 
 | Page | Description |
 |---|---|
-| **Dashboard** | Current ACWR status for all 28 squad players across all three load metrics, with risk zone flags and stat summary cards |
-| **Session Planner** | Coaches select session types (G / TAC / BP / TEC / MATCH / REST) for each of 15 upcoming days via an interactive grid editor |
-| **Forecast Results** | 15-day ACWR trajectory per player with three stacked Plotly charts (one per metric), a session calendar view, injury risk alerts, and a day-15 summary table |
+| **Dashboard** | Current ACWR status for all 28 squad players across all three load metrics, with risk zone flags and KPI summary cards |
+| **Planning & Forecast** | Coaches plan the next 15 days on an interactive FullCalendar, then run a squad-wide recursive ACWR forecast. Results show per-player ACWR trajectories, an injury risk alert banner, and a day-15 summary table |
 
 **Key functions:**
 
-| Function | Description |
-|---|---|
-| `load_models()` | `@st.cache_resource` — loads all three XGBoost Boosters from JSON |
-| `load_player_data()` | `@st.cache_resource` — builds complete daily calendar grids and computes current ACWR per player |
-| `build_forecast(plan_days)` | Roll-forward 15-day inference loop — predicts loads then feeds them into EWMA to compute future ACWR |
-| `build_acwr_chart(mdata, meta)` | Returns Plotly figure with zone bands, threshold lines, and dual historical/forecast traces |
-
-**Navigation** uses `st.radio` with a `_pending_nav` intermediary to allow programmatic page switching (e.g. after forecast completes) without hitting Streamlit's widget ownership lock.
+| Function | File | Description |
+|---|---|---|
+| `load_models()` | `app/loaders.py` | `@st.cache_resource` — loads all three XGBoost bundles |
+| `load_player_data()` | `app/loaders.py` | `@st.cache_resource` — builds daily grids and computes current ACWR per player |
+| `build_forecast(plan_days)` | `app/forecasting.py` | Recursive 15-day inference loop — predicts loads then computes future ACWR |
+| `build_acwr_chart(mdata, meta)` | `app/charts.py` | Plotly figure with zone bands, threshold lines, and dual historical/forecast traces |
 
 ---
 
@@ -136,62 +137,82 @@ A Streamlit single-file application with three pages:
 
 ## Running the Project
 
-Install runtime and training dependencies:
+### Requirements
+
+- Python 3.11 or higher
+- `pip` (standard) or `conda`
+
+### Step 1 — Clone and set up a virtual environment
 
 ```bash
-# Create and activate a virtual environment
+git clone <repo-url>
+cd REAL-MADRID-INTERNSHIP-GROUP-A
+
+# Using venv (recommended)
 python3 -m venv .venv
-source .venv/bin/activate
+source .venv/bin/activate        # macOS / Linux
+# .venv\Scripts\activate         # Windows
 
-# Install dependencies
-make install
+# Using conda
+conda create -n acwr python=3.11
+conda activate acwr
 ```
 
-For development, install the package with its dev extra:
+### Step 2 — Install dependencies
 
 ```bash
-make install-dev
+# Runtime dependencies only (run the app and train models)
+pip install -e .
+
+# With development tools (linting, type checking, tests)
+pip install -e ".[dev]"
+
+# With notebook dependencies (EDA notebooks)
+pip install -e ".[notebooks]"
+
+# Or use Make
+make install        # runtime only
+make install-dev    # runtime + dev tools
 ```
 
+### Step 3 — Train the models
+
+This step reads the raw data, builds the daily load grid, trains three XGBoost models, and saves all artifacts. Run it once before starting the app.
+
 ```bash
-# Step 1 — Run data pipeline once.
-# The notebook reads data/raw/data_acute_vs_chronic.csv,
-# extracting it from data/data_acute_vs_chronic.zip if needed.
-make install-notebooks
-
-jupyter nbconvert --to notebook --execute notebooks/data_pipeline.ipynb
-
-# Step 2 — Train all three XGBoost models
+python train_models.py
+# or
 make train
+```
 
-# Step 3 — Launch the Streamlit app
+This produces:
+- `data/processed/daily.parquet` — player load history used at inference time
+- `models/xgboost/total_distance/bundle.joblib`
+- `models/xgboost/accelerations/bundle.joblib`
+- `models/xgboost/sprint_distance/bundle.joblib`
+
+> The raw CSV (`data/raw/data_acute_vs_chronic.csv`) is extracted automatically from the committed ZIP archive if not already present.
+
+### Step 4 — Launch the app
+
+```bash
+streamlit run main.py
+# or
 make run
-
-# Alternative — using a specific conda environment
-conda run -n <env> streamlit run main.py
 ```
 
-### Dependencies
+The app opens at `http://localhost:8501` by default.
 
-Dependencies are declared in `pyproject.toml`, which is the single dependency
-source for the project.
-
-Notebook exploration dependencies are available as a separate optional extra
-because they are heavier and are not needed for CI:
+### Quality checks
 
 ```bash
-python -m pip install -e ".[notebooks]"
+make quality        # runs ruff + mypy + pytest
+
+# Individual steps
+make lint           # ruff check
+make typecheck      # mypy
+make test           # pytest
 ```
-
-### Quality Checks
-
-The repository uses `pytest`, `ruff`, and `mypy`, configured in `pyproject.toml`.
-
-```bash
-make quality
-```
-
-GitHub Actions runs the same checks on pull requests and pushes to `main`.
 
 ---
 
@@ -199,59 +220,85 @@ GitHub Actions runs the same checks on pull requests and pushes to `main`.
 
 ```
 .
-├── main.py                             # Streamlit application (3 pages)
-├── train_models.py                     # Compatibility wrapper for model training
-├── Makefile                            # Common local commands
-├── pyproject.toml                      # Project metadata and tool configuration
-├── data_decisions.md                   # Cleaning & methodology decision log
-├── tests/                              # Pytest suite for core contracts
+├── main.py                                  # Streamlit app entry point
+├── train_models.py                          # CLI wrapper for model training
+├── Makefile                                 # Common local commands
+├── pyproject.toml                           # Package metadata, dependencies, tool config
+├── data_decisions.md                        # Cleaning & methodology decision log
+├── AGENTS.md                                # Coding agent guidance
+├── TECHNICAL_DOCUMENTATION.md              # Deep-dive production documentation
+│
+├── src/
+│   ├── app/                                 # Streamlit UI layer
+│   │   ├── constants.py                     # Domain constants: targets, session types,
+│   │   │                                    #   color palettes, ENG+ESP translation table
+│   │   ├── styles.py                        # CSS injection (Real Madrid brand styling)
+│   │   ├── i18n.py                          # t() translation lookup, fmt_date_* helpers
+│   │   ├── loaders.py                       # @st.cache_resource: daily.parquet + model bundles
+│   │   ├── planning.py                      # Event model helpers, plan → daily flags, signature
+│   │   ├── forecasting.py                   # Recursive XGBoost inference + ACWR stitching
+│   │   ├── charts.py                        # Plotly ACWR chart builder
+│   │   └── pages.py                         # All Streamlit page renderers:
+│   │                                        #   page_dashboard(), page_planner(), render_sidebar()
+│   │
+│   └── real_madrid_acwr/                    # Core domain / ML layer (no Streamlit dependency)
+│       ├── config.py                        # Shared Path constants (PROJECT_ROOT, DATA_DIR, etc.)
+│       ├── acwr.py                          # Pure EWMA-ACWR math and zone classification
+│       └── modeling/
+│           ├── train.py                     # Full training pipeline (preprocess → build_daily
+│           │                                #   → add_features → date-blocked CV → XGBoost → save)
+│           └── artifacts.py                 # Typed bundle loader with contract validation
 │
 ├── data/
-│   ├── README.md                       # Data directory conventions
-│   ├── raw/                            # Immutable local raw data
-│   ├── external/                       # Local third-party data
-│   ├── interim/                        # Intermediate generated data
-│   └── processed/
-│       └── model_data.parquet          # Feature-engineered pipeline output
+│   ├── raw/
+│   │   ├── data_acute_vs_chronic.zip        # Bootstrap archive (committed to git)
+│   │   └── data_acute_vs_chronic.csv        # Extracted raw data (gitignored)
+│   ├── processed/
+│   │   ├── daily.parquet                    # Daily load grid per player (produced by train_models.py)
+│   │   └── model_data.parquet               # Legacy pipeline output (notebooks only)
+│   ├── external/                            # Third-party data (empty placeholder)
+│   └── interim/                             # Intermediate generated data (empty placeholder)
 │
 ├── models/
-│   └── xgboost/
-│       └── {target}/
-│           ├── model.json              # XGBoost Booster — native JSON format
-│           ├── feature_cols.pkl        # Ordered list of 45 feature names
-│           └── transform.pkl           # Inverse-transform metadata
-│
-├── notebooks/
-│   ├── data_pipeline.ipynb             # Data engineering → model_data.parquet
-│   ├── acc_total.ipynb                 # EDA + model exploration (accelerations)
-│   ├── total_distance.ipynb            # EDA + model exploration (running distance)
-│   └── vel_total.ipynb                 # EDA + model (high-speed running; 2-round SHAP)
-│
-├── references/
-│   └── Tema1.prediction_acute_chronic.v1.english.pdf
-│
-├── reports/
-│   └── figures/
+│   ├── xgboost/
+│   │   ├── total_distance/
+│   │   │   └── bundle.joblib                # {model, scaler, feature_cols, ewma_spans}
+│   │   ├── accelerations/
+│   │   │   └── bundle.joblib
+│   │   └── sprint_distance/
+│   │       └── bundle.joblib
+│   └── notebook_experiments/               # Legacy notebook model artifacts (not used by app)
 │       ├── acc_total/
 │       ├── total_distance/
 │       └── vel_total/
 │
-├── src/
-│   └── real_madrid_acwr/
-│       ├── acwr.py                     # EWMA-ACWR computation utilities
-│       ├── data/                       # Dataset-building code namespace
-│       ├── features/                   # Feature engineering code namespace
-│       ├── modeling/
-│       │   └── train.py                # Model training implementation
-│       └── visualization/              # Visualization code namespace
+├── notebooks/                               # EDA + exploration only — not used by the app
+│   ├── acceleration_model.ipynb
+│   ├── sprint_distance_model.ipynb
+│   └── total_distance.ipynb
 │
-├── utils/
-│   └── acwr.py                         # Compatibility wrapper for older imports
+├── tests/
+│   ├── test_acwr.py                         # EWMA-ACWR math contracts
+│   ├── test_forecasting.py                  # Forecast pipeline contracts
+│   ├── test_model_artifacts.py              # Bundle loader validation
+│   ├── test_pages.py                        # Page renderer smoke tests
+│   ├── test_planning.py                     # Planning helper contracts
+│   └── test_project_contracts.py           # Cross-module integration contracts
 │
-└── static/
-    └── img/
-        ├── Real-Madrid-CF-v2002.svg    # Club logo (sidebar)
-        └── trAIn_labs.png              # Team logo (sidebar footer)
+├── static/
+│   └── img/
+│       ├── Real-Madrid-CF-v2002.svg         # Club logo (favicon + sidebar)
+│       └── trAIn_labs.png                   # Team credit logo (sidebar footer)
+│
+├── references/
+│   ├── Tema1.prediction_acute_chronic.v1.english.pdf
+│   └── project_explanation_handout.pdf
+│
+└── reports/
+    └── figures/
+        ├── acc_total/
+        ├── total_distance/
+        └── vel_total/
 ```
 
 ---
@@ -259,24 +306,24 @@ GitHub Actions runs the same checks on pull requests and pushes to `main`.
 ## Key Data Facts
 
 - **Granularity shift:** raw data is one row per *drill period*; pipeline aggregates to one row per *player-day*
-- **28 players** tracked across the 2024/25 season; **18** have ≥ 50 active days (used for modelling)
-- **Three load metrics** are independent: Pearson r ≈ 0.48 (distance↔velocity), 0.22 (velocity↔acc), 0.19 (distance↔acc)
-- **Feature count:** 45 = 17 base + 28 player one-hots
-- **model_data.parquet** columns: `player_id`, `height`, `weight`, `age`, `total_distance`, `acc_total`, `vel_total`, `has_G`, `has_TAC`, `has_BP`, `has_TEC`, `has_MATCH`, `n_session_types`, `pos_*` (5), `days_since_start`, `days_since_last_activity`, `days_since_last_match`
+- **28 players** tracked across the 2024/25 season
+- **Three load metrics** are modelled independently: total distance, accelerations, sprint distance
+- **Rest days** are filled with zero load and contribute to EWMA decay
+- **`daily.parquet`** columns: `player_id`, `date`, `total_distance`, `accelerations`, `sprint_distance`, `n_periods`, `n_exercise_types`, `height`, `weight`, `age`, `position`, `has_G`, `has_TAC`, `has_BP`, `has_TEC`, `has_MATCH`
 
 ---
 
 ## Project Status
 
 - [x] Data exploration and cleaning complete (see `data_decisions.md`)
-- [x] Daily aggregation and full-calendar grid built (2,103 active rows; 28 players)
-- [x] Feature engineering pipeline complete (`model_data.parquet`)
+- [x] Daily aggregation and full-calendar grid built (28 players)
+- [x] Feature engineering pipeline complete (`daily.parquet`)
 - [x] EWMA-ACWR computed for all players × all load metrics, with warmup masking
-- [x] Load prediction models trained and validated (`acc_total`, `total_distance`, `vel_total`)
-- [x] SHAP interpretability analysis complete for all three models
-- [x] 15-day roll-forward ACWR simulation (`build_forecast` in `src/app/forecasting.py`)
-- [x] Interactive Streamlit application (`main.py`) — Dashboard, Planner, Forecast Results
-- [x] Professional UI with Real Madrid branding (RM official colours, club logo, team logo)
+- [x] Load prediction models trained and validated (`total_distance`, `accelerations`, `sprint_distance`)
+- [x] 15-day recursive ACWR forecast (`build_forecast` in `src/app/forecasting.py`)
+- [x] Interactive Streamlit application — Dashboard + Planning & Forecast
+- [x] Professional UI with Real Madrid branding (official colours, club logo, team logo)
+- [x] English / Spanish bilingual support
 - [ ] Final documentation and presentation
 
 ---

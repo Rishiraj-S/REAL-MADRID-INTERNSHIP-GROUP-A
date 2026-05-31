@@ -18,7 +18,7 @@ def test_makefile_quality_targets_existing_streamlit_entrypoint() -> None:
     makefile = _read_repo_file("Makefile")
 
     assert (REPO_ROOT / ENTRYPOINT).exists()
-    assert f"ruff check {ENTRYPOINT} train_models.py src tests utils" in makefile
+    assert f"ruff check {ENTRYPOINT} train_models.py src tests" in makefile
     assert f"streamlit run {ENTRYPOINT}" in makefile
     assert f"ruff check {LEGACY_ENTRYPOINT}" not in makefile
 

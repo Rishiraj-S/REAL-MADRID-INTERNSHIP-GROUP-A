@@ -112,7 +112,7 @@ def main() -> None:
     pd.set_option("display.float_format", "{:.3f}".format)
     pd.set_option("display.width", 120)
     print("\n" + "─"*90)
-    print(f"Final results (* cv_rmse on log1p scale; train/test metrics in metres (sprint))")
+    print("Final results (* cv_rmse on log1p scale; train/test metrics in metres (sprint))")
     print("─"*90)
     print(results.to_string(index=False))
 

@@ -15,8 +15,12 @@ from real_madrid_acwr.modeling.datapipeline import (
     treat_outliers,
 )
 from real_madrid_acwr.modeling.training.acceleration_model_train import main as train_accelerations
-from real_madrid_acwr.modeling.training.sprint_distance_model_train import main as train_sprint_distance
-from real_madrid_acwr.modeling.training.total_distance_model_train import main as train_total_distance
+from real_madrid_acwr.modeling.training.sprint_distance_model_train import (
+    main as train_sprint_distance,
+)
+from real_madrid_acwr.modeling.training.total_distance_model_train import (
+    main as train_total_distance,
+)
 
 
 def main() -> None:

@@ -19,7 +19,7 @@ dependencies = [
 ]
 
 [project.scripts]
-train-real-madrid-acwr-models = "real_madrid_acwr.modeling.train:main"
+train-real-madrid-acwr-models = "real_madrid_acwr.modeling.training.train:main"
 
 [build-system]
 requires = ["setuptools>=68"]

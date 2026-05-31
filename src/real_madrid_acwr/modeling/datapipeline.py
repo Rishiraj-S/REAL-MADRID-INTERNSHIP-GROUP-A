@@ -4,7 +4,7 @@ datapipeline.py — Shared preprocessing pipeline for all three targets.
 Exports
 -------
 load_data, clean_data, treat_outliers, aggregate_daily, spine_fill,
-_add_features, _encode_dow, scale_train, prepare_test,
+add_features, encode_dow, scale_train, prepare_test,
 split_data, run_pipeline, build_full_daily
 """
 
@@ -191,14 +191,14 @@ def spine_fill(daily: pd.DataFrame, target: str, HAS_COLS: list) -> pd.DataFrame
 # 4. Feature Engineering
 # =============================================================================
 
-def _add_features(daily_df: pd.DataFrame) -> pd.DataFrame:
+def add_features(daily_df: pd.DataFrame) -> pd.DataFrame:
     """Add day_of_week (integer 0 = Mon … 6 = Sun)."""
     d = daily_df.copy()
     d["day_of_week"] = d["date"].dt.dayofweek
     return d
 
 
-def _encode_dow(df: pd.DataFrame) -> pd.DataFrame:
+def encode_dow(df: pd.DataFrame) -> pd.DataFrame:
     """OHE day_of_week → dow_0 … dow_6 with fixed categories."""
     dow     = pd.Categorical(df["day_of_week"], categories=range(7))
     dummies = pd.get_dummies(dow, prefix="dow").astype(int)
@@ -239,7 +239,7 @@ def scale_train(train: pd.DataFrame, target: str) -> tuple:
 def prepare_test(test_df: pd.DataFrame, target: str,
                  scaler: MinMaxScaler, feature_cols: list) -> pd.DataFrame:
     """Apply the same transforms fitted on train. Call at evaluation time only."""
-    t = _encode_dow(_add_features(test_df))
+    t = encode_dow(add_features(test_df))
     t[target] = np.log1p(t[target])
     if target != "total_distance" and "total_distance" in t.columns:
         t = t.drop(columns=["total_distance"])
@@ -288,7 +288,7 @@ def run_pipeline(target: str, test_size: float = 0.2,
 
     train_base, test_base = split_data(daily, test_size, random_state)
 
-    train = _encode_dow(_add_features(train_base))
+    train = encode_dow(add_features(train_base))
     print(f"Train shape after feature engineering: {train.shape}")
 
     train, scaler, feature_cols = scale_train(train, target)

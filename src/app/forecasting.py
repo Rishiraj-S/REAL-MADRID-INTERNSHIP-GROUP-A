@@ -8,9 +8,8 @@ import pandas as pd
 from app.constants import SESSION_TYPES, TARGETS
 from app.loaders import get_models_or_stop, load_player_data
 from real_madrid_acwr.acwr import classify_acwr_zone, compute_acwr_with_forecast
-from real_madrid_acwr.modeling.train import _add_features
+from real_madrid_acwr.modeling.datapipeline import add_features, encode_dow
 
-HIST_DAYS = 90  # calendar days of history to seed EWMA (chronic_load needs >= 28 days)
 HIST_SHOW = 60  # days of history shown in the chart
 
 
@@ -21,7 +20,7 @@ def _build_plan_frame(
     last_active: pd.Timestamp,
     target: str,
 ) -> pd.DataFrame:
-    """Convert coach plan to a DataFrame ready for recursive forecasting."""
+    """Convert coach plan to a DataFrame ready for model inference."""
     has_cols = ["has_G", "has_TAC", "has_BP", "has_TEC", "has_MATCH"]
     rows = []
     for d, day in enumerate(plan_days, start=1):
@@ -49,56 +48,36 @@ def _build_plan_frame(
     return pd.DataFrame(rows)
 
 
-def _get_history(daily_df: pd.DataFrame, target: str, last_active: pd.Timestamp) -> pd.DataFrame:
-    """Return the last HIST_DAYS of history for all players, keeping only columns needed."""
-    cutoff = last_active - pd.Timedelta(days=HIST_DAYS - 1)
-    hist = daily_df[daily_df["date"] >= cutoff].copy()
-    keep = ["player_id", "date", target, "n_periods", "n_exercise_types",
-            "height", "weight", "age", "position"] + \
-           [c for c in daily_df.columns if c.startswith("has_")]
-    hist = hist[[c for c in keep if c in hist.columns]].reset_index(drop=True)
-    return hist
-
-
-def _recursive_forecast(
-    history: pd.DataFrame,
+def _direct_forecast(
     plan: pd.DataFrame,
     target: str,
     bundle,
 ) -> pd.DataFrame:
-    """Predict `target` for each date in `plan` using the recursive one-step-ahead approach."""
+    """Predict `target` for all plan rows in a single pass (no recursion)."""
     model        = bundle.model
     scaler       = bundle.scaler
     feature_cols = bundle.feature_cols
 
-    plan_work = plan.copy()
+    featurized = encode_dow(add_features(plan.copy()))
 
-    for current_date in sorted(plan_work["date"].unique()):
-        combined   = pd.concat([history, plan_work], ignore_index=True)
-        featurized = _add_features(combined, target)
+    for col in feature_cols:
+        if col not in featurized.columns:
+            featurized[col] = 0.0
 
-        day_rows = featurized[featurized["date"] == current_date].copy()
-        missing_feature_cols = [col for col in feature_cols if col not in day_rows.columns]
-        for col in missing_feature_cols:
-            day_rows[col] = 0.0
+    X_raw    = featurized[feature_cols].values
+    X_scaled = scaler.transform(X_raw)
+    pred     = np.clip(np.expm1(model.predict(X_scaled)), 0, None)
 
-        X_raw    = day_rows[feature_cols].values
-        X_scaled = scaler.transform(X_raw)
-        pred     = np.clip(np.expm1(model.predict(X_scaled)), 0, None)
+    pred[featurized["n_periods"].values == 0] = 0.0
 
-        # Rest days always produce 0 load
-        pred[day_rows["n_periods"].values == 0] = 0.0
-
-        for pid, val in zip(day_rows["player_id"].values, pred, strict=False):
-            mask = (plan_work["date"] == current_date) & (plan_work["player_id"] == pid)
-            plan_work.loc[mask, target] = val
-
-    return plan_work
+    result        = plan.copy()
+    result[target] = pred
+    return result
 
 
 def build_forecast(plan_days: list[dict]) -> dict:
     bundles = get_models_or_stop()
-    player_data, all_pids, _, daily_df = load_player_data()
+    player_data, all_pids, _, _ = load_player_data()
 
     last_active: pd.Timestamp = max(player_data[pid]["last_active"] for pid in all_pids)
 
@@ -110,11 +89,9 @@ def build_forecast(plan_days: list[dict]) -> dict:
         }
 
     for target, bundle in bundles.items():
-        history = _get_history(daily_df, target, last_active)
-
         plan_frame = _build_plan_frame(plan_days, all_pids, player_data, last_active, target)
 
-        forecast_result = _recursive_forecast(history, plan_frame, target, bundle)
+        forecast_result = _direct_forecast(plan_frame, target, bundle)
 
         for pid in all_pids:
             pdata     = player_data[pid]

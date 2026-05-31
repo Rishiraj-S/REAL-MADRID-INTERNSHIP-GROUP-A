@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import numpy as np
 import pandas as pd
 
-from app.forecasting import _build_plan_frame, _recursive_forecast
+from app.forecasting import _build_plan_frame, _direct_forecast
 
 
 class _IdentityScaler:
@@ -37,28 +37,8 @@ def test_build_plan_frame_includes_all_target_columns() -> None:
     assert plan_frame.loc[0, "sprint_distance"] == 0.0
 
 
-def test_recursive_forecast_handles_cross_target_feature_columns() -> None:
-    """Forecasting should tolerate bundles that expect same-day load features."""
-    history = pd.DataFrame(
-        {
-            "player_id": [7, 7],
-            "date": pd.to_datetime(["2025-01-01", "2025-01-02"]),
-            "total_distance": [5000.0, 5200.0],
-            "accelerations": [20.0, 18.0],
-            "sprint_distance": [300.0, 280.0],
-            "n_periods": [1, 1],
-            "n_exercise_types": [1, 1],
-            "height": [180.0, 180.0],
-            "weight": [75.0, 75.0],
-            "age": [24.0, 24.0],
-            "position": ["Forward", "Forward"],
-            "has_G": [1, 0],
-            "has_TAC": [0, 1],
-            "has_BP": [0, 0],
-            "has_TEC": [0, 0],
-            "has_MATCH": [0, 0],
-        }
-    )
+def test_direct_forecast_handles_missing_feature_columns() -> None:
+    """Forecasting should tolerate bundles that expect columns absent from the plan frame."""
     plan = pd.DataFrame(
         {
             "player_id": [7],
@@ -113,6 +93,6 @@ def test_recursive_forecast_handles_cross_target_feature_columns() -> None:
         ],
     )
 
-    result = _recursive_forecast(history, plan, "accelerations", bundle)
+    result = _direct_forecast(plan, "accelerations", bundle)
 
     assert result.loc[0, "accelerations"] == 0.0

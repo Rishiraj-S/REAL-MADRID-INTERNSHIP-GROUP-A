@@ -8,7 +8,7 @@ This document is the technical reference for the deployed ACWR forecasting syste
 - the mathematical and statistical design of the predictive models,
 - the conversion from predicted loads to forecast ACWR trajectories.
 
-Production behavior is defined by the Python code under `src/` and the deployable artifacts under `models/xgboost/`. Notebook material is cited only when it explains why a deployed modeling choice was made.
+Production behaviour is defined by the Python code under `src/` and the deployable artifacts under `models/xgboost/`. Notebook material is cited only when it explains why a deployed modeling choice was made.
 
 ## Table of contents
 
@@ -20,8 +20,8 @@ Production behavior is defined by the Python code under `src/` and the deployabl
 - [6. Feature vector used by the deployed models](#6-feature-vector-used-by-the-deployed-models)
 - [7. Model architecture](#7-model-architecture)
 - [8. Target-specific formulations](#8-target-specific-formulations)
-- [9. Deployed hyperparameters](#9-deployed-hyperparameters)
-- [10. Training and serving procedure](#10-training-and-serving-procedure)
+- [9. Training procedure](#9-training-procedure)
+- [10. Model artifacts and serving contract](#10-model-artifacts-and-serving-contract)
 - [11. ACWR methodology](#11-acwr-methodology)
 - [12. Forecast-generation algorithm](#12-forecast-generation-algorithm)
 - [13. End-to-end system flow](#13-end-to-end-system-flow)
@@ -49,14 +49,14 @@ Throughout the document:
 ### 1.1 Operational goal
 
 The tool is designed for football fitness coaches planning the next 15 days of training.
-The coaches do **not** directly enter expected numeric load values such as metres or acceleration counts. Instead, they enter a **session composition plan** day by day:
+The coaches do **not** directly enter expected numeric load values such as metres or acceleration counts. Instead, they schedule **session events** on an interactive calendar, tagging each event with one or more session types:
 
 - `G` — game-based / small-sided game,
 - `TAC` — tactical,
 - `BP` — set pieces,
 - `TEC` — technical,
 - `MATCH` — official match,
-- `REST` — no activity.
+- or no event on a day (rest).
 
 From this plan, the system predicts for each squad player:
 
@@ -70,21 +70,22 @@ From this plan, the system predicts for each squad player:
 For each player `p`, for each day `t` in a 15-day horizon, and for each metric `m` in
 
 - `total_distance`,
-- `acc_total`,
-- `vel_total`,
+- `accelerations`,
+- `sprint_distance`,
 
 we want to estimate a future load
 
 `ŷ[p, t, m] = f_m(x[p, t])`
 
-where `x[p, t]` is a feature vector composed of:
+where `x[p, t]` is a cross-sectional feature vector composed of:
 
-- static player attributes,
+- static player attributes (height, weight, age),
 - session-type indicators for the planned day,
-- calendar/history features,
-- a player identity one-hot encoding.
+- session activity counts (n_periods, n_exercise_types),
+- calendar features (day of week, one-hot encoded),
+- cross-metric load features where applicable.
 
-The predicted loads are then stitched to the player’s historical load time series and converted into a forecast ACWR:
+The predicted loads are then stitched to the player's historical load time series and converted into a forecast ACWR:
 
 `ACWR[p, t, m] = Acute[p, t, m] / Chronic[p, t, m]`
 
@@ -92,9 +93,9 @@ where acute and chronic are exponentially weighted moving averages (EWMA) over 7
 
 ### 1.3 Why this matters
 
-The underlying coaching question is not “what was the load yesterday?” but:
+The underlying coaching question is not "what was the load yesterday?" but:
 
-> If we plan a specific sequence of sessions over the next two weeks, how will each player’s load-risk profile evolve?
+> If we plan a specific sequence of sessions over the next two weeks, how will each player's load-risk profile evolve?
 
 This is therefore a **counterfactual forecasting** problem driven by a planned session template, not a passive reporting dashboard.
 
@@ -116,17 +117,12 @@ The raw CSV contains one row per **training period** (drill/block inside a sessi
 
 ### 2.2 Observed dataset characteristics
 
-From the project decision log:
-
-- initial shape: **3,903 rows × 13 columns**,
 - date range: **2024-07-16 to 2025-06-26**,
-- raw players: **35**,
+- raw players before cleaning: **35**,
 - final cleaned cohort: **28** players,
-- season length covered: **345 days**.
+- `daily.parquet` shape after full-calendar reconstruction: **6,310 rows × 16 columns**.
 
 ### 2.3 Core raw fields
-
-Important columns in the raw export include:
 
 | Field | Meaning |
 |---|---|
@@ -143,13 +139,7 @@ Important columns in the raw export include:
 
 ### 2.4 Semantics of `period_name`
 
-The field `period_name` has the form `{CATEGORY} {DRILL_ID}` such as:
-
-- `G 1960`
-- `TAC 0133`
-- `BP 2351`
-
-The prefix is interpreted as the session family:
+The field `period_name` has the form `{CATEGORY} {DRILL_ID}` such as `G 1960`, `TAC 0133`, `BP 2351`. The prefix is interpreted as the session family:
 
 | Prefix | Meaning |
 |---|---|
@@ -165,11 +155,11 @@ Rows with `period_name = NaN` are treated as official matches and mapped to `exe
 
 The system forecasts three different external-load targets independently:
 
-| Deployed target | Raw source | Meaning |
+| Deployed target | Raw source column | Meaning |
 |---|---|---|
-| `total_distance` | `total_distance` | Aerobic / volume load |
-| `acc_total` | `acc_band7plus_total_effort_count` | High-intensity acceleration count |
-| `vel_total` | `velocity_band6plus7_total_distance` | High-speed running distance |
+| `total_distance` | `total_distance` | Aerobic / volume load (metres) |
+| `accelerations` | `acc_band7plus_total_effort_count` | High-intensity acceleration count |
+| `sprint_distance` | `velocity_band6plus7_total_distance` | High-speed running distance (metres) |
 
 They are intentionally **not combined** into a single score because they capture different physiological stresses.
 
@@ -177,51 +167,46 @@ They are intentionally **not combined** into a single score because they capture
 
 ## 3. Cleaning and cohort definition
 
-### 3.1 Type normalization
+### 3.1 Column renaming
 
-The pipeline applies the following type conversions:
+The pipeline renames raw columns at ingestion:
 
-- `period_start_time` → `datetime64[ns]`
-- `date_of_birth` → `datetime64[ns]`
-- `player_id` → categorical-like identifier
-- `is_official_match` → boolean after filling nulls with 0
+```
+acc_band7plus_total_effort_count    →  accelerations
+velocity_band6plus7_total_distance  →  sprint_distance
+```
 
-A `date` field is derived from `period_start_time` at calendar-day granularity.
+All subsequent code uses these names exclusively.
 
-### 3.2 Age calculation
+### 3.2 Type normalisation
 
-Age is computed continuously at the row date, not at a fixed season reference date:
+- `period_start_time` → `datetime64[ns]`, timezone stripped, normalised to midnight
+- `date_of_birth` → `datetime64[ns]`, timezone stripped
+- `player_id` → categorical
+- `is_official_match` → null-filled with 0, then dropped after deriving `exercise_type`
+
+### 3.3 Age calculation
+
+Age is computed continuously at the row date:
 
 ```python
 age = (period_start_time - date_of_birth).dt.days / 365.25
 ```
 
-This matters because the model predicts future day-level loads. A continuous age feature preserves more information than integer-rounded age.
+### 3.4 Player exclusions
 
-### 3.3 Player exclusions
+Players are excluded for one or more of the following reasons:
 
-Several players are excluded before modeling because of one or more of the following:
-
-- implausible or placeholder metadata,
-- preseason-only presence,
-- too few observations to support stable ACWR or load modeling,
-- missing all core player metadata.
+- implausible placeholder metadata (`weight == 200`),
+- missing all core player metadata (height, weight, position, date of birth).
 
 The final deployed cohort contains **28 players**.
 
-### 3.4 Row-level outlier treatment
+### 3.5 Row-level outlier treatment
 
-One extreme outlier is explicitly corrected:
+The pipeline applies an **IQR cap (Q3 + 3×IQR)** per player per exercise type to `total_distance` (always) and the training target (when different from `total_distance`). This replaces any extreme period-level values with the player's own within-group upper fence, preserving the row while dampening GPS outliers.
 
-- player `94884`, match on `2025-02-15`, `total_distance = 32,299.89`
-
-This value is considered physiologically implausible and inconsistent with the player’s other match metrics. The correction strategy is:
-
-- replace the outlier with that player’s **median non-outlier match distance**,
-- keep the row,
-- keep the other two metrics unchanged.
-
-This preserves the player-day event in the time series while avoiding contamination of both the predictive model and downstream EWMA calculations.
+Separately, players with `weight == 200` (trialist placeholders) are dropped entirely.
 
 ---
 
@@ -229,27 +214,26 @@ This preserves the player-day event in the time series while avoiding contaminat
 
 ### 4.1 Aggregation target: player-day
 
-ACWR is defined on a daily timeline, so the period-level table is first aggregated to one row per:
-
-- `(player_id, date)`
-
-At this stage:
+The period-level table is aggregated to one row per `(player_id, date)`:
 
 - load metrics are **summed** over all periods that day,
-- session composition is preserved as a set of session types,
-- static player metadata is carried forward.
+- session composition is preserved as per-type binary flags,
+- static player metadata is carried forward via `first`.
 
-The renamed daily target columns are:
+The resulting daily columns are:
 
-- `total_distance`
-- `acc_total`
-- `vel_total`
-
-The resulting active-day table contains **2,103 rows**.
+| Column | Derivation |
+|---|---|
+| `total_distance` | sum of `total_distance` across periods |
+| `accelerations` | sum of `accelerations` across periods |
+| `sprint_distance` | sum of `sprint_distance` across periods |
+| `n_periods` | count of `activity_id` rows |
+| `n_exercise_types` | nunique of `exercise_type` |
+| `height`, `weight`, `age`, `position` | first value for the player-day |
 
 ### 4.2 Session composition encoding
 
-The daily aggregation retains the set of exercise categories completed on that day. From this set, the modeling pipeline derives binary flags:
+From each player-day's set of exercise types, the pipeline derives binary flags using one-hot encoding of `exercise_type`:
 
 - `has_G`
 - `has_TAC`
@@ -257,194 +241,101 @@ The daily aggregation retains the set of exercise categories completed on that d
 - `has_TEC`
 - `has_MATCH`
 
-and also:
+If a session type does not appear in the data, its column is added with all zeros.
 
-- `n_session_types = |exercise_types|`
+### 4.3 Full calendar spine reconstruction
 
-So if a player-day contains both tactical and set-piece work, then:
+After aggregating active days, the pipeline builds a **continuous daily grid** per player — one row per calendar day from each player's first to last active date. Gaps (rest days) are filled with:
 
-- `has_TAC = 1`
-- `has_BP = 1`
-- `n_session_types = 2`
+- `0` for all load metrics and session flags,
+- `0` for `n_periods` and `n_exercise_types`,
+- forward-then-backward fill for `height`, `weight`, `age`, `position`.
 
-This is how session design enters the model.
+This spine reconstruction ensures rest days contribute to EWMA decay correctly in the ACWR computation.
 
-### 4.3 Position encoding
+### 4.4 Persisted daily table
 
-Player position is one-hot encoded into:
+The full-calendar daily frame is saved at:
 
-- `pos_central_back`
-- `pos_central_midfielder`
-- `pos_forward`
-- `pos_full_back`
-- `pos_winger`
+- `data/processed/daily.parquet` — **6,310 rows × 16 columns**, 28 players, dates 2024-07-16 to 2025-06-26
 
-These features capture systematic biomechanical and tactical differences in expected load.
+This is the **primary artifact** consumed at both training and inference time.
 
-### 4.4 Calendar feature
+### 4.5 Day-of-week feature engineering
 
-The pipeline encodes each player-day as time since the season anchor date:
+Feature engineering adds a single calendar feature:
 
-- `SEASON_START_DATE = 2024-07-15`
+```python
+d["day_of_week"] = d["date"].dt.dayofweek   # 0 = Monday … 6 = Sunday
+```
 
-and defines:
+This is then one-hot encoded with fixed categories to produce `dow_0 … dow_6`, ensuring a consistent column schema regardless of which days appear in a given split:
 
-`days_since_start = (period_start_time - SEASON_START_DATE).days`
-
-This provides the model with season-phase context.
-
-### 4.5 Activity-history features
-
-Two recency variables are computed on the active-day table, using only **past** information.
-
-### Days since last activity
-
-For player `p` and active day `t_i`:
-
-`days_since_last_activity[p, i] = t_i - t_{i-1}`
-
-where `t_{i-1}` is the previous active day for that same player.
-
-### Days since last match
-
-For player `p` and active day `t_i`:
-
-`days_since_last_match[p, i] = t_i - max{s < t_i : day s included a match}`
-
-If no prior event exists, the value is filled with a lookback cap.
-
-### Capping rule
-
-Both history features are clipped to a maximum of **21 days**:
-
-`feature = min(feature, 21)`
-
-and missing first values are also filled with `21`.
-
-This cap is important because the forecast code uses the same convention; it avoids extrapolating too far beyond the observed training distribution.
-
-### 4.6 Persisted modeling table
-
-The final feature-engineered active-day dataset is stored at:
-
-- `data/processed/model_data.parquet`
-
-Notebook output indicates the deployed modeling table has shape approximately:
-
-- **2,103 rows × 21 columns** before adding player identity one-hots.
-
-Those 21 columns consist of:
-
-- `player_id`
-- 3 targets
-- 17 base predictor columns
+```python
+dow     = pd.Categorical(df["day_of_week"], categories=range(7))
+dummies = pd.get_dummies(dow, prefix="dow").astype(int)
+```
 
 ---
 
 ## 5. Full-calendar reconstruction for ACWR
 
-A subtle but important design point is that `model_data.parquet` contains **active days only**, because it is optimized for supervised learning of session-day loads.
+### 5.1 Why rest-day filling is mandatory
 
-However, ACWR requires a **continuous daily series**, where rest days contribute zeros and therefore influence both acute and chronic EWMA decay.
-
-### 5.1 Reconstructed daily grid at runtime
-
-At application load time, `load_player_data()` reconstructs a full per-player calendar grid from:
-
-- each player’s first active day,
-- to that player’s last active day,
-- at daily frequency.
-
-Missing dates are filled with:
-
-- `0.0` for all three load metrics,
-- `0` for `has_MATCH`.
-
-This produces the correct input for EWMA-based ACWR.
-
-### 5.2 Why rest-day filling is mandatory
-
-If missing days were skipped rather than filled with zeros:
+ACWR is defined on a continuous daily timeline where rest days contribute zeros and influence EWMA decay. If missing days were skipped rather than filled with zeros:
 
 - chronic load would decay too slowly,
 - acute load would remain artificially elevated,
 - the ACWR ratio would not reflect actual calendar exposure.
 
-The system therefore distinguishes between:
+### 5.2 Current ACWR state used by the dashboard
 
-- **modeling table**: active days only,
-- **ACWR computation grid**: full daily calendar with zero-load rest days.
+At application load time, `load_player_data()` (`src/app/loaders.py`) reads `daily.parquet` and for each player and metric:
 
-### 5.3 Current ACWR state used by the dashboard
+1. extracts the complete daily load series from the full-calendar grid,
+2. runs `compute_acwr(loads)` — the EWMA-ACWR computation,
+3. drops warmup `NaN` values,
+4. takes the last valid ACWR value,
+5. maps that value to an operational risk zone.
 
-`load_player_data()` does more than rebuild the daily grid. For each player and each metric, it also:
-
-1. computes ACWR on the reconstructed historical series,
-2. drops warmup `NaN` values,
-3. keeps the last valid ACWR value,
-4. maps that value to an operational risk zone.
-
-So the dashboard and the forecast page share the same ACWR engine; the forecast simply appends predicted loads before re-running the same recursion.
+The dashboard and the forecast page share the same ACWR engine. The forecast simply appends predicted loads before re-running the same computation.
 
 ---
 
 ## 6. Feature vector used by the deployed models
 
-### 6.1 Deployed feature contract
+### 6.1 Feature set
 
-The production model artifacts enforce a feature vector of exactly **45 columns**:
+The production models use a **cross-sectional** feature set — no lag, EWMA, or microcycle features. All features are known before the session starts:
 
-- **17 base features**,
-- **28 player identity one-hot columns** `pid_*`.
+| Feature group | Features |
+|---|---|
+| **Session / activity** | `n_periods`, `n_exercise_types`, `has_G`, `has_TAC`, `has_BP`, `has_TEC`, `has_MATCH` |
+| **Player anthropometrics** | `height`, `weight`, `age` |
+| **Calendar** | `dow_0`, `dow_1`, `dow_2`, `dow_3`, `dow_4`, `dow_5`, `dow_6` (day-of-week OHE) |
+| **Cross-metric load** | `total_distance` (for `accelerations` and `sprint_distance` models only) |
 
-The 17 base features are:
+### 6.2 Per-target feature counts
 
-1. `height`
-2. `weight`
-3. `age`
-4. `has_G`
-5. `has_TAC`
-6. `has_BP`
-7. `has_TEC`
-8. `has_MATCH`
-9. `n_session_types`
-10. `pos_central_back`
-11. `pos_central_midfielder`
-12. `pos_forward`
-13. `pos_full_back`
-14. `pos_winger`
-15. `days_since_start`
-16. `days_since_last_activity`
-17. `days_since_last_match`
+`scale_train()` drops the target column, `player_id`, `position`, `date`, and `total_distance` (when not the target) before selecting `feature_cols` from all remaining numeric columns.
 
-The remaining 28 columns are of the form:
+| Target | Feature count | Includes `total_distance`? |
+|---|---|---|
+| `total_distance` | **17** | No (is the target) |
+| `accelerations` | **18** | Yes (cross-metric covariate, set to 0 at inference) |
+| `sprint_distance` | **18** | Yes (cross-metric covariate, set to 0 at inference) |
 
-- `pid_<player_id>`
+The exact ordered feature list is persisted inside `bundle.joblib` as `feature_cols` and is used to align the inference matrix at serving time.
 
-and exactly one of them is `1` for a given player.
+### 6.3 What is intentionally absent
 
-### 6.2 Why include player one-hots?
+The deployed feature set does **not** include:
 
-The one-hot player identity columns allow a single global model to learn player-specific baselines without switching to a more complex hierarchical or mixed-effects model.
-
-Operationally, this lets the model capture patterns such as:
-
-- some players systematically produce more high-speed distance in the same session type,
-- some players have lower or higher typical match loads,
-- some players have persistent anthropometric or role effects not fully explained by position alone.
-
-### 6.3 Historical note on 52 features
-
-Some notebook-era documentation mentions:
-
-- 17 base features + 35 player one-hots = 52 features.
-
-That reflects an earlier wider cohort before final cleaning and deployment constraints were fixed. The **deployed** artifact contract is:
-
-- 45 total features,
-- 28 `pid_*` columns.
-
-This is validated in `src/real_madrid_acwr/modeling/artifacts.py` and in `tests/test_model_artifacts.py`.
+- lag features (`load_lag_*`) — not applicable to a cross-sectional approach,
+- EWMA load states (`acute_load`, `chronic_load`) — these are computed downstream for ACWR only, not as model inputs,
+- microcycle statistics (`monotony`, `strain`) — removed for simplicity and reduced overfitting risk,
+- player identity encodings (`pid_*`) — not needed when features are session-level,
+- position one-hot encodings — `position` is dropped as a non-numeric string column.
 
 ---
 
@@ -452,13 +343,7 @@ This is validated in `src/real_madrid_acwr/modeling/artifacts.py` and in `tests/
 
 ### 7.1 One model per target
 
-The system trains **three independent XGBoost regressors**, one for each target:
-
-- `acc_total`
-- `total_distance`
-- `vel_total`
-
-This design is intentional. The three outputs are not treated as a single multivariate target because the relationships between session design and each load metric differ materially.
+The system trains **three independent XGBoost regressors** — one each for `total_distance`, `accelerations`, and `sprint_distance`. This treats each load component as a distinct physiological response to session composition.
 
 ### 7.2 Functional form
 
@@ -466,231 +351,155 @@ For a given target `m`, the model is a boosted additive tree ensemble:
 
 `f_m(x) = Σ_{k=1..K} η · b_k(x)`
 
-where:
-
-- `b_k` is the `k`-th regression tree,
-- `K` is the number of boosting rounds / trees,
-- `η` is the learning rate.
-
-In XGBoost terms, the model minimizes a regularized objective of the form:
+where `b_k` is the k-th regression tree, `K` is the number of boosting rounds, and `η` is the learning rate. XGBoost minimizes a regularized objective:
 
 `L = Σ_i l(y_i, ŷ_i) + Σ_k Ω(b_k)`
 
-where:
+The deployed training configuration uses:
 
-- `l` is the target-specific loss,
-- `Ω` is the tree-complexity regularizer controlled by depth, child-weight, gamma, and L1/L2 penalties.
+- `objective = "reg:squarederror"` (on the log1p-transformed target),
+- `tree_method = "hist"`,
+- `random_state = 42`,
+- `n_jobs = -1`.
 
-The deployed training code uses:
+### 7.3 Why tree boosting fits this problem
 
-- `tree_method = "hist"`
-- `random_state = 42`
-- `n_jobs = -1`
+Gradient-boosted trees naturally handle:
 
-### 7.3 Why tree boosting is appropriate here
-
-Gradient-boosted trees are a good fit because the problem mixes:
-
-- continuous features (`age`, `height`, `days_since_start`),
-- sparse binary indicators (`has_MATCH`, `pid_*`),
-- non-linear effects,
-- feature interactions.
-
-Examples of interactions the model can learn naturally include:
-
-- a tactical day affecting a winger differently from a central back,
-- a match after a long rest producing different expected load from a match in congested scheduling,
-- mixed session templates (`G` + `TAC`) behaving differently from either alone.
+- sparse binary indicators (`has_MATCH`, `has_G`, etc.),
+- non-linear interactions (e.g. a match on a Monday vs a Friday),
+- mixed feature scales (age in years, height in cm, binary flags).
 
 ---
 
 ## 8. Target-specific formulations
 
-### 8.1 `total_distance`: log-transformed squared error
+### 8.1 Uniform log1p transform
 
-#### Statistical issue
+All three targets are right-skewed and non-negative. The training pipeline applies the same transform to every target:
 
-`total_distance` is a strictly non-negative continuous variable with a right-skewed distribution.
-A raw squared-error model would overweight unusually large distances.
+```python
+train[target] = np.log1p(train[target])
+test[target]  = np.log1p(test[target])
+```
 
-#### Transformation
+At inference time, predictions are inverted and clipped:
 
-The training target is transformed as:
+```python
+pred = np.clip(np.expm1(model.predict(X_scaled)), 0, None)
+```
 
-`z = log(1 + y)`
+This approach is consistent across all three targets; there are no per-target objective differences.
 
-where `y = total_distance`.
+### 8.2 Feature scaling
 
-The model learns:
+Before fitting, all feature columns are scaled with `MinMaxScaler`:
 
-`f_distance(x) ≈ z`
+```python
+scaler = MinMaxScaler()
+train[feature_cols] = scaler.fit_transform(train[feature_cols])
+test[feature_cols]  = scaler.transform(test[feature_cols])
+```
 
-using XGBoost with objective:
-
-- `reg:squarederror`
-
-So the training loss is approximately:
-
-`l(y, ŷ) = (log(1 + y) - ŷ)^2`
-
-where `ŷ` is the model prediction in log-space.
-
-#### Inverse transform at inference
-
-Predictions are converted back to metres by:
-
-`ŷ_distance = max(exp(ŷ_log) - 1, 0)`
-
-The `max(·, 0)` clipping guarantees non-negative output.
-
-#### Why this helps
-
-The log transform compresses the upper tail and makes optimization more stable, while still returning predictions in the original physical unit after inversion.
-
-### 8.2 `acc_total`: Tweedie regression
-
-#### Statistical issue
-
-`acc_total` is count-like, non-negative, and right-skewed, with a small but meaningful mass at zero.
-
-#### Objective
-
-The deployed model uses:
-
-- `objective = "reg:tweedie"`
-- `tweedie_variance_power = 1.9`
-
-For Tweedie models with power parameter `p` in `(1, 2)`, the family interpolates between Poisson-like and Gamma-like behavior and is suitable for non-negative data with a point mass near zero.
-
-At a high level, XGBoost optimizes the Tweedie negative log-likelihood under a log link, i.e. a mean parameter of the form:
-
-`μ(x) = exp(f(x))`
-
-and, up to constants independent of the model, the loss can be written as:
-
-`l(y, μ) = - y * μ^(1-p) / (1-p) + μ^(2-p) / (2-p)`
-
-with `p = 1.9` here.
-
-#### Why this helps
-
-This allows the model to handle:
-
-- non-negativity,
-- skewness,
-- limited zero inflation,
-
-without splitting the task into separate classification and regression stages.
-
-### 8.3 `vel_total`: raw squared error
-
-#### Statistical issue
-
-`vel_total` is sparse and noisier than the other targets, with roughly 30% zeros in notebook analysis.
-
-#### Objective
-
-The deployed model uses:
-
-- `objective = "reg:squarederror"`
-
-on the raw target:
-
-`l(y, ŷ) = (y - ŷ)^2`
-
-Predictions are clipped at zero after inference:
-
-`ŷ_vel = max(ŷ_raw, 0)`
-
-#### Why no log transform?
-
-Notebook experimentation indicated that for this target, raw MSE combined with tuned tree regularization gave better deployed behavior than a Tweedie or log-space alternative after feature selection analysis.
+The fitted scaler is saved in `bundle.joblib` alongside the model and is applied identically at inference time.
 
 ---
 
-## 9. Deployed hyperparameters
+## 9. Training procedure
 
-The package training module `src/real_madrid_acwr/modeling/train.py` uses the following best parameter sets.
+### 9.1 Train/test split
 
-| Target | Objective | Key hyperparameters |
-|---|---|---|
-| `acc_total` | `reg:tweedie`, `p=1.9` | `n_estimators=1600`, `learning_rate=0.005`, `max_depth=4`, `min_child_weight=10`, `subsample=0.8`, `colsample_bytree=0.7`, `colsample_bylevel=0.6`, `gamma=0.3`, `reg_alpha=1`, `reg_lambda=5` |
-| `total_distance` | `reg:squarederror` on `log1p(y)` | `n_estimators=600`, `learning_rate=0.02`, `max_depth=8`, `min_child_weight=3`, `subsample=0.8`, `colsample_bytree=0.5`, `colsample_bylevel=0.6`, `gamma=0.5`, `reg_alpha=0.01`, `reg_lambda=0.5` |
-| `vel_total` | `reg:squarederror` | `n_estimators=200`, `learning_rate=0.07`, `max_depth=3`, `min_child_weight=2`, `subsample=1.0`, `colsample_bytree=1.0`, `colsample_bylevel=0.8`, `gamma=0.3`, `reg_alpha=10`, `reg_lambda=5` |
+The dataset is split randomly at the row level:
 
-These parameters were selected in the modeling notebooks using randomized search and then hard-coded into the production training module.
+```python
+train_base, test_base = train_test_split(daily, test_size=0.2, random_state=42)
+```
 
----
+This matches the notebook experimental setup. An 80/20 random split is used consistently across all three targets.
 
-## 10. Training and serving procedure
+### 9.2 Cross-validation
 
-### 10.1 Split strategy
+Within the training set, hyperparameter search uses **10-fold KFold** (shuffled):
 
-Training uses a random shuffled split:
+```python
+cv10 = KFold(n_splits=10, shuffle=True, random_state=42)
+```
 
-- `test_size = 0.20`
-- `random_state = 42`
-- `shuffle = True`
+### 9.3 Hyperparameter search
 
-So the supervised learning problem is evaluated as an i.i.d.-style tabular regression task over player-days.
+`RandomizedSearchCV` is used with **50 iterations** per target over a wide continuous search space:
 
-#### Why not a chronological split?
-
-The project comments indicate that a naive time split is awkward here because players have overlapping, non-identical timelines. The deployed implementation chooses a random split to preserve sample size and player coverage.
-
-This should be interpreted carefully: the supervised model is learning a **session-to-load mapping**, while the final ACWR forecast is a downstream simulation built on top of that mapping.
-
-### 10.2 Model fitting and evaluation
-
-For each target:
-
-1. build `X` from the 45 feature columns,
-2. build `y` from the target column,
-3. apply `log1p` only for `total_distance`,
-4. fit the XGBoost regressor,
-5. predict on the test set,
-6. invert the transform if needed,
-7. clip predictions to zero,
-8. compute:
-   - MAE,
-   - R².
-
-Notebook summaries and the project README report approximate held-out performance around:
-
-| Target | Test MAE | Test R² |
-|---|---|---|
-| `total_distance` | ≈ 800 m | ≈ 0.43 |
-| `acc_total` | ≈ 3.63 efforts | ≈ 0.38 |
-| `vel_total` | ≈ 18.3 m | ≈ 0.16 |
-
-The relatively lower `vel_total` performance is consistent with the sparser, noisier nature of that target.
-
-### 10.3 Artifact persistence
-
-Each target produces three files under `models/xgboost/{target}/`:
-
-| File | Purpose |
+| Parameter | Distribution |
 |---|---|
-| `model.json` | Native XGBoost `Booster` |
-| `feature_cols.pkl` | Ordered inference feature schema |
-| `transform.pkl` | Transform metadata (`none` or `log1p`) |
+| `n_estimators` | randint(200, 3000) |
+| `max_depth` | randint(2, 16) |
+| `max_leaves` | randint(0, 1024) |
+| `min_child_weight` | loguniform(0.1, 500) |
+| `gamma` | loguniform(1e-6, 100) |
+| `subsample` | uniform(0.3, 0.7) |
+| `colsample_bytree` | uniform(0.3, 0.7) |
+| `colsample_bylevel` | uniform(0.3, 0.7) |
+| `colsample_bynode` | uniform(0.3, 0.7) |
+| `learning_rate` | loguniform(1e-3, 5e-1) |
+| `reg_alpha` | loguniform(1e-8, 100) |
+| `reg_lambda` | loguniform(1e-8, 100) |
+| `grow_policy` | ["depthwise", "lossguide"] |
+| `max_bin` | randint(64, 1024) |
+| `max_delta_step` | randint(0, 10) |
 
-The application loads the native `Booster` directly, rather than an sklearn pipeline pickle, to reduce portability and binary-compatibility problems.
+Scoring: `neg_mean_squared_error` on the log1p-transformed target. `error_score=np.nan` silently skips numerically unstable combinations. The best estimator is refitted on the full training set before evaluation.
 
-### 10.4 Artifact validation at serving time
+### 9.4 Test-set evaluation
 
-Before inference, `src/real_madrid_acwr/modeling/artifacts.py` validates each target directory against a strict contract. For every target, the loader checks that:
+After fitting, the model is evaluated on the held-out test set in the original (non-log) space:
 
-- the full artifact triad exists,
-- `model.json` can be loaded as a valid XGBoost `Booster`,
-- `feature_cols.pkl` is a non-empty list of strings,
-- the feature list has exactly 45 entries,
-- there are no duplicate feature names,
-- all 17 base features are present,
-- there are exactly 28 `pid_*` columns,
-- `transform.pkl` matches one of the supported transform dictionaries.
+```python
+y_pred = np.clip(np.expm1(model.predict(X_te)), 0, None)
+y_true = np.expm1(y_te)
+```
 
-This matters because the forecast loop depends on exact schema alignment. A mismatch between trained feature order and serving-time feature construction would silently corrupt predictions if it were not validated early.
+Metrics reported: RMSE, MAE, R², and CV RMSE (on the log1p scale).
+
+---
+
+## 10. Model artifacts and serving contract
+
+### 10.1 Artifact format
+
+Each target produces one file under `models/xgboost/{target}/`:
+
+| File | Content |
+|---|---|
+| `bundle.joblib` | joblib-serialised dict: `model` (XGBRegressor), `scaler` (MinMaxScaler), `feature_cols` (list[str]), `ewma_spans` (dict) |
+
+The `ewma_spans` dict is `{"acute": 7, "chronic": 28}` for all three targets (stored for documentation; not used during inference since EWMA is computed downstream on the ACWR series).
+
+### 10.2 Artifact validation at serving time
+
+Before any inference, `src/real_madrid_acwr/modeling/artifacts.py` validates each bundle against a strict contract. For every target, the loader checks:
+
+- the bundle file exists and can be loaded,
+- all four keys (`model`, `scaler`, `feature_cols`, `ewma_spans`) are present,
+- `feature_cols` is a non-empty list of strings with no duplicates,
+- `ewma_spans` is a dict with exactly the keys `"acute"` and `"chronic"`.
+
+Validation failures raise `ArtifactLoadError` with a full error list before the Streamlit app renders any content.
+
+### 10.3 Feature alignment at inference
+
+The serving code reads `feature_cols` from the bundle and uses it to extract and order the inference matrix:
+
+```python
+featurized = encode_dow(add_features(plan_frame))
+for col in feature_cols:
+    if col not in featurized.columns:
+        featurized[col] = 0.0
+X_raw    = featurized[feature_cols].values
+X_scaled = scaler.transform(X_raw)
+pred     = np.clip(np.expm1(model.predict(X_scaled)), 0, None)
+```
+
+Any feature column missing from the inference frame is filled with `0.0` before extraction.
 
 ---
 
@@ -698,55 +507,41 @@ This matters because the forecast loop depends on exact schema alignment. A mism
 
 ### 11.1 Acute and chronic EWMAs
 
-For a player’s daily load series `load[t]`, the system computes two uncoupled exponentially weighted moving averages.
+For a player's daily load series `load[t]`, the system computes two uncoupled exponentially weighted moving averages.
 
-#### Acute load
+**Acute load** (α = 2/(7+1) = 0.25):
 
-`acute[t] = λ_a * load[t] + (1 - λ_a) * acute[t-1]`
+`acute[t] = α_a · load[t] + (1 − α_a) · acute[t−1]`
 
-with:
+**Chronic load** (α = 2/(28+1) ≈ 0.069):
 
-`λ_a = 2 / (7 + 1) = 0.25`
+`chronic[t] = α_c · load[t] + (1 − α_c) · chronic[t−1]`
 
-#### Chronic load
-
-`chronic[t] = λ_c * load[t] + (1 - λ_c) * chronic[t-1]`
-
-with:
-
-`λ_c = 2 / (28 + 1) ≈ 0.0689655`
-
-The initialization convention is equivalent to starting from zero and letting the EWMA recurse forward.
+Both are initialised at zero and computed from the same raw load series independently (uncoupled formulation).
 
 ### 11.2 ACWR ratio
 
-The ratio is:
-
 `ACWR[t] = acute[t] / chronic[t]`
 
-with safeguards:
+Safeguards:
 
 - if `chronic[t] == 0`, ACWR is set to `NaN`,
-- the first 28 days are masked as warmup.
+- the first 28 days are masked as warmup (chronic not yet stable).
 
-### 11.3 Why EWMA instead of rolling averages?
+### 11.3 Why EWMA instead of rolling averages
 
-EWMA gives higher weight to recent sessions and handles rest-day decay more smoothly than simple rolling averages. This is the method explicitly implemented in `src/real_madrid_acwr/acwr.py`.
+EWMA gives exponentially higher weight to recent sessions and handles rest-day decay more smoothly than simple rolling averages. This matches the Williams et al. (2017) formulation cited in sport-science literature.
 
 ### 11.4 Risk zone classification
 
-The app maps ACWR values into four operational bands:
+| Zone | ACWR range | Interpretation |
+|---|---|---|
+| `undertraining` | < 0.8 | Insufficient load stimulus |
+| `optimal` | 0.8 ≤ ACWR < 1.3 | Safe training range |
+| `caution` | 1.3 ≤ ACWR < 1.5 | Elevated risk — monitor closely |
+| `danger` | ≥ 1.5 | High injury risk — reduce load |
 
-| Zone | Range |
-|---|---|
-| `undertraining` | `< 0.8` |
-| `optimal` | `0.8 <= ACWR < 1.3` |
-| `caution` | `1.3 <= ACWR < 1.5` |
-| `danger` | `>= 1.5` |
-
-If the value is unavailable after warmup masking, the app reports the zone as `unknown`.
-
-These bands are used as decision-support thresholds, not as a medical diagnosis.
+If the value is unavailable after warmup masking, the app reports `unknown`. These thresholds are heuristic sport-science conventions, not a medical diagnosis.
 
 ---
 
@@ -756,7 +551,7 @@ The forecast engine lives in `src/app/forecasting.py`.
 
 ### 12.1 Inputs
 
-The forecasting loop receives a 15-day plan of daily booleans such as:
+The forecasting function receives a 15-element list of daily plan dicts, each produced by collapsing the coach's calendar events via `build_plan_days_from_events()`:
 
 ```python
 {
@@ -769,105 +564,100 @@ The forecasting loop receives a 15-day plan of daily booleans such as:
 }
 ```
 
-### 12.2 Per-player state at forecast start
+### 12.2 Plan frame construction
 
-For each player, the app loads:
+For each target, a plan DataFrame is built with one row per (player, plan day):
 
-- the reconstructed historical daily grid,
-- the player profile (height, weight, age, position one-hots),
-- the last active day,
-- the last match day,
-- the current `days_since_start` value.
+```python
+row = {
+    "player_id":        pid,
+    "date":             last_active + timedelta(days=d),
+    "n_periods":        0 if is_rest else 1,
+    "n_exercise_types": count of active session types,
+    "height":           player profile value,
+    "weight":           player profile value,
+    "age":              player profile value,
+    "has_G": ..., "has_TAC": ..., ...   # from plan flags
+}
+```
 
-### 12.3 Day-by-day recursive feature construction
+### 12.3 Direct single-pass inference
 
-For each future day `d = 1, ..., 15`, the model computes dynamic recency features.
+All 15 plan days × all 28 players are predicted in a **single model call** (`_direct_forecast`):
 
-### Days since last activity
+```python
+featurized = encode_dow(add_features(plan_frame))
+for col in feature_cols:
+    if col not in featurized.columns:
+        featurized[col] = 0.0
+X_raw    = featurized[feature_cols].values
+X_scaled = scaler.transform(X_raw)
+pred     = np.clip(np.expm1(model.predict(X_scaled)), 0, None)
+pred[featurized["n_periods"].values == 0] = 0.0   # rest days → 0
+```
 
-If `prev_active_d` is the last forecast-step index that contained activity, then:
+There is no day-by-day loop and no feedback of predictions into subsequent days. Because the feature set is cross-sectional (session flags, anthropometrics, day of week), each day's prediction is fully independent.
 
-`dsla[d] = min(d - prev_active_d, 21)`
+### 12.4 From predicted loads to forecast ACWR
 
-Initially `prev_active_d = 0`, meaning the count is relative to the forecast window start and the player’s pre-horizon history.
+After all 15 daily loads are predicted for a player and metric:
 
-### Days since last match
+1. Retrieve the historical load series from `player_data[pid]["grid"]`.
+2. Append the 15 predicted loads.
+3. Call `compute_acwr_with_forecast(hist_loads, fore_loads)`.
+4. Slice the last 60 historical days plus the 15 forecast days for charting.
+5. Extract `day15_acwr` (the last valid ACWR in the forecast segment) and classify its zone.
 
-Similarly:
+The stitched computation:
 
-`dslm[d] = min(d - prev_match_d, 21)`
+```
+load*[1:H+15] = [h[1], ..., h[H], f[1], ..., f[15]]
+```
 
-where `prev_match_d` is initialized using the gap between the player’s most recent active date and most recent match date.
+runs the same EWMA recursion over the concatenated series. Historical momentum carries naturally into the forecast region without any manual state-seeding.
 
-### Rest-day behavior
-
-If `is_rest = True` on day `d`:
-
-- all three predicted loads are forced to `0.0`,
-- the activity counters are **not** reset,
-- the sequence moves to the next day.
-
-This preserves the effect of consecutive rest days on future recency features.
-
-### 12.4 Feature vector assembly at inference time
-
-For each target model and each player-day, the app builds a dictionary with:
-
-- static player features,
-- session flags for the planned day,
-- dynamic day-history features,
-- all 28 `pid_*` columns.
-
-The resulting row is then reordered to exactly match `feature_cols.pkl` before being passed to `xgboost.DMatrix(...)`.
-
-Formally, for player `p`, day `d`, target `m`:
-
-`x[p, d] = concat(profile[p], session_flags[d], recency[p, d], pid_one_hot[p])`
-
-and prediction is:
-
-`ŷ[p, d, m] = g_m(x[p, d])`
-
-followed by target-specific post-processing:
-
-- `exp(·) - 1` inversion for `total_distance`,
-- zero clipping for all targets.
-
-### 12.5 From predicted loads to forecast ACWR
-
-After the 15 daily loads are predicted for a player and a metric:
-
-1. take the historical load vector from the full daily grid,
-2. append the 15 predicted loads,
-3. run `compute_acwr_with_forecast(...)`,
-4. keep the forecast segment and its final day-15 ACWR.
-
-Formally, if historical loads are `h[1:H]` and forecast loads are `f[1:15]`, then the stitched sequence is:
-
-`load*[1:H+15] = [h[1], ..., h[H], f[1], ..., f[15]]`
-
-and the same EWMA recursion is run over this combined series.
-
-This is the key modeling idea: **the predictive model forecasts load, not ACWR directly**. ACWR is a deterministic downstream transformation of the load path.
+**Key modeling idea:** the predictive model forecasts **load**, not ACWR directly. ACWR is a deterministic downstream transformation of the load path.
 
 ---
 
 ## 13. End-to-end system flow
 
-The deployed pipeline is:
+```
+data/raw/data_acute_vs_chronic.csv  (extracted from ZIP if needed)
+         │
+         ▼  python train_models.py
+         │    load_data()          — read CSV / extract ZIP
+         │    clean_data()         — rename columns, parse dates, drop missing
+         │    treat_outliers()     — IQR-cap per player per exercise type
+         │    build_full_daily()   — aggregate all 3 metrics, fill rest-day spine
+         │    → save daily.parquet (6,310 rows × 16 cols, all 28 players)
+         │
+         │    For each target (accelerations, sprint_distance, total_distance):
+         │      run_pipeline(target)  — data → clean → outliers → aggregate → spine → split → scale
+         │      RandomizedSearchCV   — 50-iter search, 10-fold KFold
+         │      → save bundle.joblib — model, scaler, feature_cols, ewma_spans
+         │
+         ▼  streamlit run main.py
+         │    loaders.load_models()       — @st.cache_resource: loads 3 bundles, validates contract
+         │    loaders.load_player_data()  — @st.cache_resource: reads daily.parquet,
+         │                                  computes current ACWR per player × metric
+         │
+         ▼  Dashboard page
+         │    shows current ACWR per player × 3 metrics, risk zone KPIs
+         │
+         ▼  Planning & Forecast page
+              coach adds events to FullCalendar
+              events → build_plan_days_from_events() → 15-day bool flag list
+              build_forecast(plan_days)
+                → _build_plan_frame()    — one row per (player × day)
+                → _direct_forecast()    — single-pass XGBoost inference for all rows
+                → compute_acwr_with_forecast() — EWMA on stitched history + predicted loads
+              render per-player ACWR charts + day-15 summary table
+```
 
-1. raw CSV / ZIP bootstrap,
-2. notebook data pipeline creates `data/processed/model_data.parquet`,
-3. package training code fits three XGBoost models,
-4. artifacts are saved under `models/xgboost/`,
-5. the Streamlit app loads artifacts and player data,
-6. coaches define a future 15-day session plan,
-7. the app predicts future daily loads,
-8. the app computes forecast ACWR trajectories and risk zones.
+Compact mathematical view:
 
-A compact mathematical view is:
-
-`planned sessions -> feature vectors -> predicted loads -> EWMA acute/chronic -> ACWR -> risk zone`
+`planned sessions → session flags → feature vectors → predicted loads → EWMA acute/chronic → ACWR → risk zone`
 
 ---
 
@@ -875,78 +665,94 @@ A compact mathematical view is:
 
 | File | Responsibility |
 |---|---|
-| `main.py` | Streamlit entry point |
-| `src/app/loaders.py` | Load artifacts, rebuild player grids, compute current ACWR |
-| `src/app/forecasting.py` | Roll-forward prediction of daily loads and future ACWR |
-| `src/real_madrid_acwr/acwr.py` | EWMA and ACWR computations |
-| `src/real_madrid_acwr/modeling/train.py` | Production training and artifact generation |
-| `src/real_madrid_acwr/modeling/artifacts.py` | Artifact validation and loading contract |
-| `notebooks/data_pipeline.ipynb` | Raw-to-processed data engineering notebook |
+| `main.py` | Streamlit entry point, page dispatch, nav state management |
+| `src/app/loaders.py` | Load model bundles and player data; compute current ACWR |
+| `src/app/forecasting.py` | Direct load prediction and ACWR stitching |
+| `src/app/planning.py` | Event model helpers, plan → daily session flags, stale-detection signature |
+| `src/app/pages.py` | All Streamlit page renderers (dashboard, planner, sidebar) |
+| `src/app/charts.py` | Plotly ACWR chart builder |
+| `src/app/constants.py` | Domain constants, color palettes, full ENG/ESP translation table |
+| `src/app/i18n.py` | `t()` translation lookup, date formatting helpers |
+| `src/app/styles.py` | CSS injection (Real Madrid brand styling) |
+| `src/real_madrid_acwr/acwr.py` | Pure EWMA-ACWR computation and zone classification |
+| `src/real_madrid_acwr/config.py` | Shared Path constants |
+| `src/real_madrid_acwr/modeling/artifacts.py` | Bundle loader with contract validation |
+| `src/real_madrid_acwr/modeling/datapipeline.py` | Shared preprocessing pipeline (used by app and training) |
+| `src/real_madrid_acwr/modeling/train.py` | Compatibility shim → `training/train.py` |
+| `src/real_madrid_acwr/modeling/training/train.py` | Orchestrator: saves daily.parquet, calls all three model trainers |
+| `src/real_madrid_acwr/modeling/training/acceleration_model_train.py` | XGBoost training for `accelerations` |
+| `src/real_madrid_acwr/modeling/training/sprint_distance_model_train.py` | XGBoost training for `sprint_distance` |
+| `src/real_madrid_acwr/modeling/training/total_distance_model_train.py` | XGBoost training for `total_distance` |
+| `train_models.py` | CLI entry point — calls `training/train.py:main()` |
 | `data_decisions.md` | Cleaning and methodology rationale |
 
 ---
 
 ## 15. Assumptions and limitations
 
-The current system should be interpreted with the following constraints in mind.
-
 ### 15.1 Data limitations
 
-- Only one season is available.
-- There is no session duration, sRPE, or wellness data.
-- Rest days and tracking gaps can be observationally indistinguishable.
-- Some players have sparse activity histories.
+- Only one season (2024–25) is available. Long-run trends, seasonal effects, and inter-season recovery are not captured.
+- There is no session duration, RPE (rating of perceived exertion), or wellness data.
+- Rest days and tracking gaps are observationally indistinguishable in the raw data.
 
 ### 15.2 Modeling limitations
 
-- The supervised train/test split is random, not chronological.
-- Player identity is encoded by one-hot features rather than a hierarchical model.
-- `vel_total` remains a comparatively noisy target.
-- Forecast quality depends on the assumption that future session composition behaves similarly to historical session composition.
+- The feature set is cross-sectional: session flags, anthropometrics, and day of week. The model has no access to a player's recent load history at inference time.
+- For the `accelerations` and `sprint_distance` models, `total_distance` is included as a cross-metric feature but is set to `0.0` at inference (since it is not predicted at the same time). This differs from training where all three metrics were observed together.
+- The models do not encode player identity. Systematic load differences between players must be captured indirectly through anthropometrics and session type responses.
+- `sprint_distance` is the noisiest and sparsest of the three targets and is expected to have lower predictive accuracy.
 
 ### 15.3 ACWR limitations
 
 - ACWR is a workload proxy, not an injury diagnosis.
-- Risk zones are heuristic thresholds from sports-science convention.
+- Risk zone thresholds (0.8, 1.3, 1.5) are heuristic sport-science conventions. Their clinical validity in football-specific contexts is debated.
 - The model predicts load and propagates it into ACWR; it does not predict injury probability directly.
 
 ---
 
 ## 16. Practical interpretation
 
-The system should be read as a two-stage engine:
+The system operates as a two-stage engine:
 
-### Stage 1 — Session-to-load model
+**Stage 1 — Session-to-load model**
 
-Given a player profile and a planned session type, estimate how much external load that day is likely to generate.
+Given a player's physical profile (height, weight, age) and a planned session composition (session type flags, day of week), estimate how much external load that session day is likely to generate. The model is trained on historical player-day observations and learns the expected load response to different session configurations.
 
-### Stage 2 — Load-to-ACWR simulator
+**Stage 2 — Load-to-ACWR simulator**
 
-Given the player’s historical loads and the predicted next 15 loads, propagate the EWMA state forward and inspect whether the player enters a safe, caution, or danger zone.
+Given the player's full historical load series and the 15 predicted future loads, propagate the EWMA state forward and determine whether the player enters a safe, caution, or danger zone at day 15.
 
-This separation is important because it makes the logic transparent:
+This separation keeps the logic transparent:
 
-- the model handles **behavioral/physical response to a planned session**,
+- the predictive model handles **session composition → expected load**,
 - the ACWR equations handle **physiological workload accumulation over time**.
+
+Coaches can interrogate both layers independently: if a player's forecasted ACWR looks alarming, they can inspect which planned sessions drive the predicted load spike and modify the schedule before the sessions occur.
 
 ---
 
 ## 17. Reproducing the deployed artifacts
 
-From the repository conventions, the minimal regeneration flow is:
+From a clean checkout:
 
 ```bash
-python -m pip install -e ".[dev]"
-python -m pip install -e ".[notebooks]"
-jupyter nbconvert --to notebook --execute notebooks/data_pipeline.ipynb
+# 1. Create and activate environment
+python3 -m venv .venv
+source .venv/bin/activate
+
+# 2. Install runtime + dev dependencies
+pip install -e ".[dev]"
+
+# 3. Train models and produce daily.parquet
+#    (extracts the raw CSV from data/data_acute_vs_chronic.zip automatically)
 python train_models.py
-```
 
-Then run the application with:
-
-```bash
+# 4. Launch the app
 streamlit run main.py
 ```
+
+`train_models.py` is a self-contained CLI that handles data extraction, preprocessing, daily-grid construction, feature engineering, model training, and artifact saving. No notebook execution is required for production use. The notebooks under `notebooks/` are for EDA and model exploration only.
 
 ---
 
@@ -954,11 +760,13 @@ streamlit run main.py
 
 In concrete terms, this project does the following:
 
-1. converts period-level GPS training logs into player-day features,
-2. learns how planned session composition maps to expected external load,
-3. predicts the next 15 daily loads for each player,
-4. propagates those loads through a 7-day vs 28-day EWMA ACWR model,
-5. presents the resulting risk trajectory to coaches in an interactive app.
+1. Converts period-level GPS training logs into a continuous player-day grid with zero-load rest days.
+2. Applies IQR-based outlier capping per player per session type.
+3. Engineers a cross-sectional feature set: session composition flags, player anthropometrics, and day-of-week (one-hot).
+4. Trains three independent XGBoost regressors — one per load metric — using random 80/20 splits and 10-fold KFold CV with 50-iteration randomised hyperparameter search.
+5. Saves each model, its MinMaxScaler, and its ordered feature list as a single `bundle.joblib` artifact.
+6. At inference time, builds a 15-day plan frame (one row per player × day), featurises all rows at once, and predicts all loads in a single model call.
+7. Propagates the combined load series (history + predictions) through the 7-day vs 28-day EWMA ACWR model.
+8. Presents the resulting risk trajectory and day-15 zone to coaches in an interactive Streamlit application.
 
-So the core technical object is not just an ACWR calculator; it is a **load forecasting + ACWR simulation system**.
-
+The core system is a **cross-sectional load prediction + ACWR simulation pipeline** — the model responds to session plan inputs, and ACWR converts those load predictions into a clinically interpretable risk metric.

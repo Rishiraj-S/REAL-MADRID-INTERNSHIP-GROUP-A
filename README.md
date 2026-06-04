@@ -25,6 +25,7 @@ The Club's technical staff and fitness coaches need answers to questions such as
 
 - What will the ACWR of our athletes be if we run a high-intensity training session tomorrow?
 - Which athletes are most likely to have a dangerously high ACWR based on their training history?
+- How can we modify a specific player's plan to reduce their injury risk?
 
 Currently, training is planned based on experience and recent metric values alone. This project bridges that gap with a predictive, interactive solution.
 
@@ -78,7 +79,7 @@ Three independent XGBoost models — one per load metric — trained via `src/re
 | `accelerations` | count | ~1.6 | ~0.73 |
 | `sprint_distance` | metres | ~7.0 | ~0.31 |
 
-**Feature vector (17–18 features per model):**
+**Feature vector (17–18 features per model, cross-sectional):**
 - Session composition: `has_G`, `has_TAC`, `has_BP`, `has_TEC`, `has_MATCH`, `n_periods`, `n_exercise_types`
 - Player profile: `height`, `weight`, `age`
 - Calendar: `dow_0 … dow_6` (day-of-week one-hot)
@@ -100,12 +101,14 @@ EWMA parameters: Acute α = 0.25 (7-day) · Chronic α ≈ 0.069 (28-day) · War
 
 ### 5. Interactive Application (`main.py`)
 
-A Streamlit application with two pages:
+A bilingual Streamlit application (ENG / ESP) with four pages:
 
 | Page | Description |
 |---|---|
-| **Dashboard** | Current ACWR status for all 28 squad players across all three load metrics, with risk zone flags and KPI summary cards |
-| **Planning & Forecast** | Coaches schedule sessions on an interactive FullCalendar; "Run Forecast" predicts 15-day ACWR trajectories for all players and renders per-player charts + a day-15 summary table |
+| **Dashboard** | ACWR methodology, formula, risk zone definitions, current squad status with colour-coded ACWR per player |
+| **Planning & Forecast** | FullCalendar session planner → 15-day ACWR forecast for all 28 players → injury risk alert → per-player charts |
+| **Player Customization** | Select an at-risk player, modify their squad plan day-by-day, compare custom vs original ACWR forecast |
+| **Export Plan** | Full squad training schedule as a table; one-click A3 PDF export via browser print |
 
 **Forecast flow:**
 1. Build plan frame: one row per (player × day) with session flags + player profile
@@ -164,7 +167,7 @@ make quality   # ruff + mypy + pytest
 
 ```
 .
-├── main.py                                    # Streamlit app entry point
+├── main.py                                    # Streamlit app entry point (4 pages, bilingual)
 ├── train_models.py                            # CLI: trains all models + saves artifacts
 ├── pyproject.toml                             # Package metadata, deps, tool config
 ├── Makefile                                   # Common local commands
@@ -181,19 +184,20 @@ make quality   # ruff + mypy + pytest
 │   └── sprint_distance/bundle.joblib
 │
 ├── notebooks/
-│   ├── datapipeline.py                        # Shared preprocessing module
+│   ├── datapipeline.py                        # Shared preprocessing module (EDA)
 │   ├── total_distance.ipynb
 │   ├── accelerations.ipynb
 │   └── sprint_distance.ipynb
 │
 ├── src/
 │   ├── app/                                   # Streamlit UI layer
-│   │   ├── charts.py                          # Plotly ACWR chart builder
-│   │   ├── constants.py                       # Domain constants + ENG/ESP translations
+│   │   ├── charts.py                          # Plotly ACWR chart builder (spline + bar load)
+│   │   ├── constants.py                       # Domain constants (imports translations)
+│   │   ├── translations.py                    # Full ENG/ESP translation table (162 keys)
 │   │   ├── forecasting.py                     # Load prediction + ACWR stitching
-│   │   ├── i18n.py                            # Translation + date-format helpers
+│   │   ├── i18n.py                            # t(), t_pos(), date-format helpers
 │   │   ├── loaders.py                         # Cached model + player data loaders
-│   │   ├── pages.py                           # Dashboard + planner page renderers
+│   │   ├── pages.py                           # All 4 page renderers + sidebar
 │   │   ├── planning.py                        # Calendar event model + plan helpers
 │   │   └── styles.py                          # CSS injection
 │   │
@@ -201,9 +205,9 @@ make quality   # ruff + mypy + pytest
 │       ├── acwr.py                            # EWMA-ACWR computation
 │       ├── config.py                          # Shared Path constants
 │       └── modeling/
-│           ├── artifacts.py                   # Bundle loader + contract validation (app-facing)
+│           ├── artifacts.py                   # Bundle loader + contract validation
 │           ├── datapipeline.py                # Shared preprocessing (app + training)
-│           ├── train.py                       # Compatibility shim → training/train.py
+│           ├── train.py                       # Compatibility shim
 │           └── training/
 │               ├── train.py                   # Orchestrator: daily.parquet + all 3 models
 │               ├── acceleration_model_train.py
@@ -211,23 +215,9 @@ make quality   # ruff + mypy + pytest
 │               └── total_distance_model_train.py
 │
 ├── static/img/                                # App image assets (logos)
-├── tests/                                     # Pytest suite
+├── tests/                                     # Pytest suite (28 tests)
 └── references/                                # Reference documents and briefs
 ```
-
----
-
-## Project Status
-
-- [x] Data exploration and cleaning complete
-- [x] Daily aggregation and full-calendar grid (6,310 rows · 28 players)
-- [x] Feature engineering pipeline (cross-sectional: session flags, anthropometrics, DOW OHE)
-- [x] Load prediction models trained (XGBoost · 50-iter RandomizedSearchCV · 10-fold KFold)
-- [x] EWMA-ACWR computed for all players × all load metrics with warmup masking
-- [x] 15-day ACWR simulation via direct single-pass inference
-- [x] Interactive Streamlit application — Dashboard + Planning & Forecast
-- [x] Professional UI with Real Madrid branding
-- [ ] Final presentation
 
 ---
 

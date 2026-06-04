@@ -306,60 +306,72 @@ and Spearman match within ±0.02 across all pairs — no hidden non-linear struc
 
 ### Feature set
 
-**Decision:** 17 base features + 35 player identity one-hots = 52 features per model.
+**Decision:** 17–18 cross-sectional features per model (no time-series features, no player identity).
 
-Base features:
-- Player anthropometrics: `height`, `weight`, `age`
-- Session composition: `has_G`, `has_TAC`, `has_BP`, `has_TEC`, `has_MATCH`, `n_session_types`
-- Position: `pos_central_back`, `pos_central_midfielder`, `pos_forward`, `pos_full_back`, `pos_winger`
-- Calendar: `days_since_start`
-- Activity history: `days_since_last_activity`, `days_since_last_match`
+| Group | Features |
+|---|---|
+| Session composition | `has_G`, `has_TAC`, `has_BP`, `has_TEC`, `has_MATCH`, `n_periods`, `n_exercise_types` |
+| Player anthropometrics | `height`, `weight`, `age` |
+| Calendar | `dow_0 … dow_6` (day-of-week one-hot encoded) |
+| Cross-metric | `total_distance` (covariate for `accelerations` and `sprint_distance` models only) |
 
-**Rationale:** Player identity one-hots allow the model to learn per-player baselines without
-requiring a hierarchical model. The 35-player cohort is small enough that one-hot encoding is
-tractable and interpretable. SHAP analysis confirms player identity accounts for only 3.3% of
-total feature importance in `acc_total`, confirming the base features dominate.
+**Rationale:** The model answers a cross-sectional question: given a session composition and
+player profile, what load does that session produce? Time-series features (lags, EWMA states,
+microcycle stats) were evaluated but added complexity without proportional gain given the
+dataset size (2,103 active rows). Day-of-week OHE captures weekday/weekend patterns. Player
+identity one-hots were dropped — the feature set captures enough variance without them.
 
-### Loss function per target
+**Deployed feature counts:** `total_distance` → 17 features; `accelerations` and
+`sprint_distance` → 18 features (with `total_distance` as covariate).
 
-| Target | Loss | Rationale |
-|---|---|---|
-| `acc_total` | Tweedie (power 1.1–1.9) | Count-like data with 3.1% zeros and right skew (skew ≈ 1.55); Tweedie handles the mass at zero natively without a two-stage model |
-| `total_distance` | log-MSE (`reg:squarederror` on `log1p` target) | Right-skewed continuous (skew ≈ 0.9); log transform normalises it; `expm1` applied at inference |
-| `vel_total` | Raw MSE (`reg:squarederror`) | ~30% zeros; distribution analysis showed Tweedie did not outperform raw MSE after SHAP feature selection |
+### Loss function
 
-**Alternatives considered for `acc_total`:** Hurdle model (classify zero/non-zero, then regress).
-Rejected — Tweedie achieved comparable MAE with a single-stage pipeline and simpler inference code.
+**Decision:** All three targets use `reg:squarederror` on `log1p`-transformed targets.
+
+```python
+train[target] = np.log1p(train[target])
+pred = np.clip(np.expm1(model.predict(X_scaled)), 0, None)
+```
+
+**Rationale:** All three load metrics are non-negative and right-skewed. `log1p` compresses the
+tail and makes the residuals more symmetric. The uniform transform simplifies the pipeline
+(no per-target objective switching). `clip(0)` enforces non-negativity at inference.
 
 ### Train / test split strategy
 
-**Decision:** Random 80/20 split, no temporal ordering.
+**Decision:** Random 80/20 row-level split (`train_test_split(random_state=42)`), matching the
+notebook experimental setup.
 
-**Rationale:** The model answers a cross-sectional question — given a player's attributes and
-session type, what load does that session produce? Temporal structure is not the primary concern
-at this stage. A time-aware split would reduce training data substantially given the dataset size
-(2,103 rows) and leave some players with very few test examples.
-
-**[OPEN]** Switch to time-based split for the final model once simulation requirements are clearer.
+**Rationale:** The model answers a cross-sectional question — temporal structure is not the
+primary concern. A random split preserves player coverage in both sets and avoids data-sparse
+test sets that a chronological split would produce at this dataset size (2,103 active rows).
 
 ### Hyperparameter tuning
 
-**Decision:** `RandomizedSearchCV`, n_iter=100, 5-fold CV, `neg_mean_absolute_error` scoring.
-Elastic net regularisation (L1 + L2 jointly) + early stopping (50 rounds on 15% holdout).
+**Decision:** `RandomizedSearchCV`, n_iter=50, 10-fold KFold (shuffled, random_state=42),
+`neg_mean_squared_error` scoring over a wide continuous search space:
 
-**Rationale:** Full grid search is computationally prohibitive over the chosen search space (~10M
-combinations). 100 random draws with 5-fold CV provides good coverage. Elastic net is preferred
-over pure L1 or L2 because it handles correlated features (position + player one-hots) more
-robustly.
+| Parameter | Distribution |
+|---|---|
+| `n_estimators` | randint(200, 3000) |
+| `learning_rate` | loguniform(1e-3, 0.5) |
+| `max_depth` | randint(2, 16) |
+| `min_child_weight` | loguniform(0.1, 500) |
+| `subsample`, `colsample_*` | uniform(0.3, 0.7) |
+| `reg_alpha`, `reg_lambda` | loguniform(1e-8, 100) |
 
-### SHAP feature selection (vel_total only)
+**Rationale:** Wide continuous distributions cover more of the hyperparameter space than
+fixed discrete grids. 50 iterations with 10-fold CV balances search depth against runtime.
+`error_score=np.nan` silently skips numerically unstable combinations.
 
-**Decision:** Two-round pipeline — Round 1 trains on all 52 features; Round 2 retains only the
-features needed to reach 90% cumulative SHAP importance and re-tunes from scratch. Winner chosen
-by test MAE.
+### Deployed test-set performance
 
-**Rationale:** `vel_total` has a more sparse, noisy signal (~30% zeros) than the other targets.
-Reducing features addresses potential overfitting and speeds up inference. The threshold (90%)
-preserves nearly all predictive information while dropping low-signal features.
+| Target | Test MAE | Test R² |
+|---|---|---|
+| `total_distance` | ~339 m | ~0.78 |
+| `accelerations` | ~1.6 efforts | ~0.73 |
+| `sprint_distance` | ~7.0 m | ~0.31 |
+
+`sprint_distance` has lower R² due to its sparse, noisy nature (~many zero days).
 
 ---

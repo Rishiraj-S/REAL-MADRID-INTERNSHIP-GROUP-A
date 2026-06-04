@@ -1,0 +1,222 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[margin=2.2cm]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{enumitem}
+\usepackage{hyperref}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue,
+  urlcolor=blue
+}
+
+\definecolor{rmblue}{HTML}{00529F}
+\definecolor{rmgold}{HTML}{FEBE10}
+\definecolor{rmred}{HTML}{EE324E}
+\definecolor{softgray}{HTML}{F4F6F8}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.7em}
+\setlist[itemize]{topsep=0.2em,itemsep=0.2em,leftmargin=1.4em}
+\setlist[enumerate]{topsep=0.2em,itemsep=0.2em,leftmargin=1.6em}
+
+\newcommand{\tagbox}[2]{%
+  \fcolorbox{#1}{softgray}{\strut\hspace{0.4em}\textcolor{#1}{\textbf{#2}}\hspace{0.4em}}%
+}
+
+\title{\textbf{\textcolor{rmblue}{Real Madrid ACWR Project}}\\
+\large A simple explanation for a football analytics presentation}
+\author{Prepared for a non-computer-science audience}
+\date{}
+
+\begin{document}
+\maketitle
+
+\section*{One-Sentence Summary}
+
+This project is an interactive tool that helps football fitness coaches test a future training plan and see whether each player's workload is likely to become too low, normal, or risky over the next 15 days.
+
+\section*{1. The Main Sport-Science Idea}
+
+The project focuses on \textbf{ACWR}, which means \textbf{Acute:Chronic Workload Ratio}.
+
+\begin{itemize}
+  \item \textbf{Acute workload}: how much load the player has had recently, roughly the last 7 days.
+  \item \textbf{Chronic workload}: the player's longer-term fitness/load base, roughly the last 28 days.
+  \item \textbf{ACWR}: acute workload divided by chronic workload.
+\end{itemize}
+
+In simple terms:
+
+\[
+\text{ACWR} = \frac{\text{recent workload}}{\text{normal longer-term workload}}
+\]
+
+If a player suddenly has a very hard week compared with what he has been used to over the last month, his ACWR rises.
+
+\section*{2. How To Interpret ACWR}
+
+\begin{center}
+\begin{tabular}{>{\bfseries}p{3.2cm}p{4cm}p{7cm}}
+\toprule
+Zone & ACWR Range & Meaning \\
+\midrule
+Undertraining & $< 0.8$ & The player may not be receiving enough load stimulus. \\
+Optimal & $0.8$ to $1.3$ & The player is in a generally safe training range. \\
+Caution & $1.3$ to $1.5$ & The player may be approaching elevated workload risk. \\
+Danger & $\geq 1.5$ & The player may be overloaded and should be monitored closely. \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\textbf{Important:} this tool does not predict injuries directly. It predicts workload risk signals. Coaches should combine it with medical information, wellness data, player feedback, tactical needs, and staff judgment.
+
+\section*{3. What The Tool Does}
+
+The tool lets coaches answer questions like:
+
+\begin{quote}
+\textit{If we plan these sessions for the next 15 days, which players might enter a risky workload zone?}
+\end{quote}
+
+The coach does not need to write code. They use a Streamlit app with two main parts:
+
+\begin{enumerate}
+  \item \textbf{Dashboard}: shows the current ACWR status of the squad.
+  \item \textbf{Planning and Forecast}: lets the coach create a 15-day plan and then forecasts future ACWR.
+\end{enumerate}
+
+The planned session types are:
+
+\begin{center}
+\begin{tabular}{>{\bfseries}p{2.5cm}p{8cm}}
+\toprule
+Code & Meaning \\
+\midrule
+G & Game-based work / small-sided games \\
+TAC & Tactical session \\
+BP & Set pieces \\
+TEC & Technical session \\
+MATCH & Official match \\
+REST & No planned load \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\section*{4. The Three Workload Metrics}
+
+The project does not use just one load number. It calculates ACWR separately for three football GPS/IMU metrics:
+
+\begin{center}
+\begin{tabular}{>{\bfseries}p{4cm}p{10cm}}
+\toprule
+Metric & Football Meaning \\
+\midrule
+Total Distance & Overall running volume. This reflects general aerobic and movement load. \\
+Accelerations & High-intensity acceleration efforts. This reflects neuromuscular stress. \\
+High-Speed Running & Distance covered at high speed. This is important for sprint exposure and high-speed running demands. \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+This matters because a player can look safe in total distance but risky in high-speed running, or the opposite.
+
+\section*{5. How The Project Works}
+
+You can explain the project as a simple pipeline:
+
+\begin{enumerate}
+  \item \textbf{Historical player data is collected}\\
+  The data contains past training sessions, matches, player positions, height, weight, age, and GPS workload metrics.
+
+  \item \textbf{The data is cleaned and organized by day}\\
+  The original data is at the level of training drills or periods. The project converts it into one row per player per day.
+
+  \item \textbf{The project learns patterns from the past}\\
+  It learns examples such as:
+  \begin{itemize}
+    \item For this player, how much load does a tactical session usually create?
+    \item Do forwards and full-backs show different high-speed running loads?
+    \item How does a match compare with a technical session?
+    \item How do player profile and recent activity affect expected load?
+  \end{itemize}
+
+  \item \textbf{The coach enters a future plan}\\
+  For example: tactical session tomorrow, match in three days, recovery day after that.
+
+  \item \textbf{The model predicts future daily loads}\\
+  For every player and every future day, it estimates total distance, accelerations, and high-speed running.
+
+  \item \textbf{The app recalculates future ACWR}\\
+  It combines each player's real past workload with the predicted future workload.
+
+  \item \textbf{The app shows risk zones}\\
+  The coach can see which players are projected to be optimal, undertrained, caution, or danger.
+\end{enumerate}
+
+\section*{6. Simple Analogy}
+
+Think of each player like a car engine.
+
+\begin{itemize}
+  \item The \textbf{chronic workload} is what the engine is used to handling.
+  \item The \textbf{acute workload} is what we are asking it to do this week.
+  \item If we suddenly ask too much compared with its normal level, the risk light turns on.
+\end{itemize}
+
+\section*{7. Suggested Presentation Structure}
+
+\begin{enumerate}
+  \item \textbf{Problem}\\
+  Coaches need to plan training while avoiding sudden workload spikes. Manual planning makes it hard to see future risk for every player.
+
+  \item \textbf{Sport-Science Concept}\\
+  Explain acute workload, chronic workload, ACWR, and the risk zones.
+
+  \item \textbf{Data}\\
+  Explain that the project uses football training and match data: player profile, position, session type, and GPS load metrics.
+
+  \item \textbf{Model}\\
+  The project learns from previous sessions to estimate future load. It uses separate models for total distance, accelerations, and high-speed running.
+
+  \item \textbf{App}\\
+  A coach creates a 15-day schedule. The app forecasts ACWR for each player and highlights risk alerts.
+
+  \item \textbf{Value}\\
+  The tool supports faster planning, player-specific workload monitoring, and clearer communication between data staff and fitness coaches.
+
+  \item \textbf{Limitations}\\
+  The project has no wellness or RPE data, ACWR is not a medical diagnosis, and results depend on the quality of historical data.
+\end{enumerate}
+
+\section*{8. One-Minute Presentation Script}
+
+\begin{quote}
+This project is a workload planning tool for football fitness coaches. It uses past GPS training and match data to understand how different session types affect each player. The key metric is ACWR, which compares recent workload over about 7 days with longer-term workload over about 28 days. If the recent load is too high compared with the player's normal base, the player may enter a caution or danger zone.
+
+In the app, a coach builds a 15-day training plan, and the system predicts how each player's total distance, accelerations, and high-speed running will evolve. Then it calculates future ACWR and highlights players who may be undertrained or overloaded. The goal is not to replace coaches, but to give them a clear decision-support tool before finalizing the training plan.
+\end{quote}
+
+\section*{9. Short Version For A Slide}
+
+\begin{center}
+\fcolorbox{rmblue}{softgray}{
+\begin{minipage}{0.9\textwidth}
+\textbf{\textcolor{rmblue}{Project purpose:}} Forecast player workload risk before a training plan is finalized.
+
+\textbf{\textcolor{rmblue}{Input:}} Past GPS data + player profile + planned 15-day session schedule.
+
+\textbf{\textcolor{rmblue}{Output:}} Future ACWR curves and risk zones for each player.
+
+\textbf{\textcolor{rmblue}{Main value:}} Helps coaches identify players who may be undertrained or overloaded.
+\end{minipage}
+}
+\end{center}
+
+\end{document}

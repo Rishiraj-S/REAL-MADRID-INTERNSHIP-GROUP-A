@@ -32,8 +32,8 @@ def build_acwr_chart(mdata: dict, meta: dict, show_load: bool = False) -> Any:
     unit = meta.get("unit", "")
 
     # customdata rows: [load_str, activities_str]
-    hist_custom = [[_fmt_load(l, unit), _acts_str(a)] for l, a in zip(hist_load, hist_acts)]
-    fore_custom = [[_fmt_load(l, unit), _acts_str(a)] for l, a in zip(fore_load, fore_acts)]
+    hist_custom = [[_fmt_load(v, unit), _acts_str(a)] for v, a in zip(hist_load, hist_acts, strict=False)]
+    fore_custom = [[_fmt_load(v, unit), _acts_str(a)] for v, a in zip(fore_load, fore_acts, strict=False)]
 
     fig = go.Figure()
 
@@ -54,7 +54,34 @@ def build_acwr_chart(mdata: dict, meta: dict, show_load: bool = False) -> Any:
             xanchor="left", yanchor="top",
         )
 
-    # Historical trace — extend by one forecast point for visual join
+    # ── Load bars (below ACWR lines so they don't obscure) ────────────────────
+    if show_load:
+        fig.add_trace(go.Bar(
+            x=hist_x,
+            y=hist_load,
+            name=f"Load ({unit})",
+            marker=dict(
+                color="#334D6E",
+                opacity=0.55,
+                line=dict(color="#000000", width=0.6),
+            ),
+            yaxis="y2",
+            hoverinfo="skip",
+        ))
+        fig.add_trace(go.Bar(
+            x=fore_x,
+            y=fore_load,
+            name=f"Forecast Load ({unit})",
+            marker=dict(
+                color="#334D6E",
+                opacity=0.35,
+                line=dict(color="#000000", width=0.6),
+            ),
+            yaxis="y2",
+            hoverinfo="skip",
+        ))
+
+    # ── Historical ACWR — spline for smooth curve, extend one point for join ──
     join_x      = hist_x + ([fore_x[0]] if fore_x else [])
     join_y      = hist_y + ([fore_y[0]] if fore_y else [])
     join_custom = hist_custom + ([fore_custom[0]] if fore_custom else [])
@@ -63,7 +90,7 @@ def build_acwr_chart(mdata: dict, meta: dict, show_load: bool = False) -> Any:
         x=join_x, y=join_y,
         customdata=join_custom,
         mode="lines", name="Historical",
-        line=dict(color="rgba(0,82,159,0.65)", width=2),
+        line=dict(color="rgba(0,82,159,0.65)", width=2, shape="spline", smoothing=0.6),
         connectgaps=False,
         hovertemplate=(
             "<b>%{x}</b><br>"
@@ -73,11 +100,12 @@ def build_acwr_chart(mdata: dict, meta: dict, show_load: bool = False) -> Any:
         ),
     ))
 
+    # ── Forecast ACWR — spline ─────────────────────────────────────────────────
     fig.add_trace(go.Scatter(
         x=fore_x, y=fore_y,
         customdata=fore_custom,
         mode="lines+markers", name="Forecast",
-        line=dict(color=meta["color"], width=2.5),
+        line=dict(color=meta["color"], width=2.5, shape="spline", smoothing=0.6),
         marker=dict(size=5, color=meta["color"],
                     line=dict(color="#FFFFFF", width=1.5)),
         fill="tozeroy", fillcolor=meta["fill"],
@@ -90,26 +118,6 @@ def build_acwr_chart(mdata: dict, meta: dict, show_load: bool = False) -> Any:
             "<extra>Forecast</extra>"
         ),
     ))
-
-    if show_load:
-        hist_load = mdata.get("hist_load", [])
-        fore_load = mdata.get("fore_load", [])
-        join_load = list(hist_load) + ([fore_load[0]] if fore_load else [])
-
-        fig.add_trace(go.Scatter(
-            x=join_x, y=join_load,
-            mode="lines", name=f"Load ({unit})",
-            line=dict(color="#334D6E", width=1.5, dash="dot"),
-            yaxis="y2",
-            hoverinfo="skip",
-        ))
-        fig.add_trace(go.Scatter(
-            x=fore_x, y=fore_load,
-            mode="lines", name=f"Forecast Load ({unit})",
-            line=dict(color="#334D6E", width=1.5, dash="dot"),
-            yaxis="y2",
-            hoverinfo="skip",
-        ))
 
     fig.update_layout(
         height=400,
@@ -125,6 +133,7 @@ def build_acwr_chart(mdata: dict, meta: dict, show_load: bool = False) -> Any:
                     bgcolor="rgba(255,255,255,0.95)",
                     bordercolor="#DCE8F5", borderwidth=1,
                     font=dict(size=11, color="#334D6E")),
+        barmode="overlay",
         xaxis=dict(tickfont=dict(size=10, color="#64748B"),
                    gridcolor="rgba(0,82,159,0.06)",
                    showline=False, tickangle=40, nticks=22),

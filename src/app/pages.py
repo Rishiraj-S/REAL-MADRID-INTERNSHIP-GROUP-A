@@ -22,7 +22,7 @@ from app.constants import (
     TARGETS,
     ZONE_COLORS,
 )
-from app.forecasting import build_forecast
+from app.forecasting import build_forecast, build_player_forecast
 from app.i18n import (
     fmt_date_full,
     fmt_date_long,
@@ -95,19 +95,19 @@ def page_dashboard() -> None:
         <div style="flex:1;min-width:160px;background:linear-gradient(135deg,#00529F,#0369a1);
                     border-radius:12px;padding:1.1rem 1.3rem;color:#fff">
             <div style="font-size:0.65rem;font-weight:800;text-transform:uppercase;letter-spacing:1.2px;
-                        opacity:0.65;margin-bottom:5px">Season</div>
+                        opacity:0.65;margin-bottom:5px">{t("info_season")}</div>
             <div style="font-size:1.15rem;font-weight:800">2024 &ndash; 25</div>
         </div>
         <div style="flex:1;min-width:160px;background:linear-gradient(135deg,#00529F,#0369a1);
                     border-radius:12px;padding:1.1rem 1.3rem;color:#fff">
             <div style="font-size:0.65rem;font-weight:800;text-transform:uppercase;letter-spacing:1.2px;
-                        opacity:0.65;margin-bottom:5px">Squad</div>
-            <div style="font-size:1.15rem;font-weight:800">{len(all_pids)} Players &nbsp;&middot;&nbsp; 3 Metrics</div>
+                        opacity:0.65;margin-bottom:5px">{t("info_squad")}</div>
+            <div style="font-size:1.15rem;font-weight:800">{t("info_players_metrics").format(n=len(all_pids))}</div>
         </div>
         <div style="flex:2;min-width:260px;background:linear-gradient(135deg,#00529F,#0369a1);
                     border-radius:12px;padding:1.1rem 1.3rem;color:#fff">
             <div style="font-size:0.65rem;font-weight:800;text-transform:uppercase;letter-spacing:1.2px;
-                        opacity:0.65;margin-bottom:5px">Smoothing Method</div>
+                        opacity:0.65;margin-bottom:5px">{t("info_smoothing")}</div>
             <div style="font-size:1.05rem;font-weight:800">
                 EWMA &nbsp;&middot;&nbsp;
                 &alpha;<sub>acute</sub> = 0.25 &nbsp;&middot;&nbsp;
@@ -117,37 +117,35 @@ def page_dashboard() -> None:
     </div>""", unsafe_allow_html=True)
 
     # ── ACWR formula ─────────────────────────────────────────────────────────
-    st.markdown('<div class="section-label" style="margin-bottom:0.9rem">What is ACWR?</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="section-label" style="margin-bottom:0.9rem">{t("section_what_is_acwr")}</div>', unsafe_allow_html=True)
 
     left_col, right_col = st.columns([1, 1.6], gap="large")
     with left_col:
-        st.markdown("""
+        st.markdown(f"""
         <div style="background:#FFFFFF;border:1px solid #D7E4F1;border-radius:12px;
                     padding:1.5rem 1.6rem;height:100%">
             <div style="font-size:0.88rem;color:#475569;line-height:1.75;margin-bottom:1.2rem">
-                The <strong style="color:#00529F">Acute:Chronic Workload Ratio</strong> compares a
-                player's recent training load against their longer term baseline. A ratio far above
-                1.0 signals a sudden spike in load, a known injury risk indicator in sport science.
+                {t("acwr_intro")}
             </div>
             <div style="display:flex;align-items:center;justify-content:center;gap:1.4rem;
                         padding:1.1rem;background:#F0F4FA;border-radius:10px">
                 <span style="font-size:1.25rem;font-weight:900;color:#00529F">ACWR =</span>
                 <div style="display:inline-flex;flex-direction:column;align-items:center">
-                    <span style="font-size:1rem;font-weight:700;color:#00529F;padding-bottom:5px">Acute Load</span>
+                    <span style="font-size:1rem;font-weight:700;color:#00529F;padding-bottom:5px">{t("acwr_acute_label")}</span>
                     <div style="width:100%;height:2.5px;background:#00529F;border-radius:2px"></div>
-                    <span style="font-size:1rem;font-weight:700;color:#00529F;padding-top:5px">Chronic Load</span>
+                    <span style="font-size:1rem;font-weight:700;color:#00529F;padding-top:5px">{t("acwr_chronic_label")}</span>
                 </div>
             </div>
         </div>""", unsafe_allow_html=True)
 
     with right_col:
         for title, days, alpha, desc in [
-            ("Acute Load", "7 days", "&alpha; = 0.25",
-             "Short term fatigue. Reflects how hard the player has trained recently. High sensitivity to recent session spikes."),
-            ("Chronic Load", "28 days", "&alpha; &asymp; 0.07",
-             "Long term fitness baseline. Represents the player's accumulated conditioning over the past month."),
-            ("EWMA", "", "",
-             "Exponentially Weighted Moving Average. Gives higher weight to recent sessions and decays smoothly on rest days, more responsive than a simple rolling average."),
+            (t("acwr_acute_label"), t("acwr_acute_days"), "&alpha; = 0.25",
+             t("acwr_acute_desc")),
+            (t("acwr_chronic_label"), t("acwr_chronic_days"), "&alpha; &asymp; 0.07",
+             t("acwr_chronic_desc")),
+            (t("acwr_ewma_label"), "", "",
+             t("acwr_ewma_desc")),
         ]:
             badge = f'<span style="font-family:Courier New,monospace;font-size:0.72rem;font-weight:700;color:#00529F;background:#EEF3FF;padding:1px 7px;border-radius:4px;margin-left:6px">{days}</span>' if days else ""
             alpha_badge = f'<span style="font-family:Courier New,monospace;font-size:0.72rem;font-weight:700;color:#475569;background:#F1F5F9;padding:1px 7px;border-radius:4px;margin-left:4px">{alpha}</span>' if alpha else ""
@@ -165,19 +163,19 @@ def page_dashboard() -> None:
             </div>""", unsafe_allow_html=True)
 
     # ── Risk zones ───────────────────────────────────────────────────────────
-    st.markdown('<div class="section-label" style="margin-top:1.8rem;margin-bottom:0.9rem">Risk Zones</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="section-label" style="margin-top:1.8rem;margin-bottom:0.9rem">{t("section_risk_zones")}</div>', unsafe_allow_html=True)
     zone_info = [
-        ("undertraining", "ACWR < 0.8",  "Undertraining",
-         "Recent load well below baseline. Fitness may be declining; player not adequately prepared for match demands."),
-        ("optimal",       "0.8 to 1.3",  "Optimal",
-         "Acute and chronic load are balanced. Sweet spot for performance and injury prevention."),
-        ("caution",       "1.3 to 1.5",  "Caution",
-         "Load noticeably above baseline. Injury risk is elevated. Monitor closely and consider reducing intensity."),
-        ("danger",        "ACWR ≥ 1.5",  "High Risk",
-         "Acute load far exceeds baseline. Significantly increased soft tissue injury risk. Immediate load reduction recommended."),
+        ("undertraining", t("zone_undertraining_range"), t("zone_undertraining_label"),
+         t("zone_undertraining_desc")),
+        ("optimal",       t("zone_optimal_range"),       t("zone_optimal_label"),
+         t("zone_optimal_desc")),
+        ("caution",       t("zone_caution_range"),       t("zone_caution_label"),
+         t("zone_caution_desc")),
+        ("danger",        t("zone_danger_range"),        t("zone_danger_label"),
+         t("zone_danger_desc")),
     ]
     zone_cols = st.columns(4)
-    for col, (zone, rng, label, desc) in zip(zone_cols, zone_info):
+    for col, (zone, rng, label, desc) in zip(zone_cols, zone_info, strict=False):
         color = ZONE_COLORS[zone]
         col.markdown(f"""
         <div style="border:1px solid {color}28;border-top:4px solid {color};border-radius:12px;
@@ -194,7 +192,7 @@ def page_dashboard() -> None:
         </div>""", unsafe_allow_html=True)
 
     # ── Current player status ─────────────────────────────────────────────────
-    st.markdown('<div class="section-label" style="margin-top:2rem;margin-bottom:0.9rem">Current Player Status</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="section-label" style="margin-top:2rem;margin-bottom:0.9rem">{t("section_player_status")}</div>', unsafe_allow_html=True)
 
     # KPI summary
     n_danger    = sum(1 for pid in all_pids for m in TARGETS if current_acwr[pid][m]["zone"] == "danger")
@@ -204,10 +202,10 @@ def page_dashboard() -> None:
 
     k1, k2, k3, k4 = st.columns(4)
     for col, label, val, color in [
-        (k1, "High Risk Flags",   n_danger,  "#EE324E"),
-        (k2, "Caution Flags",     n_caution, "#F59E0B"),
-        (k3, "Optimal Flags",     n_optimal, "#10B981"),
-        (k4, "Undertraining",     n_under,   "#64748B"),
+        (k1, t("kpi_high_risk_flags"), n_danger,  "#EE324E"),
+        (k2, t("kpi_caution_flags"),   n_caution, "#F59E0B"),
+        (k3, t("kpi_optimal_flags"),   n_optimal, "#10B981"),
+        (k4, t("kpi_undertraining"),   n_under,   "#64748B"),
     ]:
         col.markdown(f"""
         <div style="background:#FFFFFF;border:1px solid #E2EBF6;border-top:4px solid {color};
@@ -229,13 +227,13 @@ def page_dashboard() -> None:
 
     header = (
         '<thead><tr style="background:#F0F4FA;border-bottom:2px solid #D7E4F1">'
-        '<th style="padding:9px 14px;text-align:left;font-size:0.68rem;font-weight:800;color:#00529F;text-transform:uppercase;letter-spacing:0.8px;white-space:nowrap">Player</th>'
-        '<th style="padding:9px 14px;text-align:left;font-size:0.68rem;font-weight:800;color:#00529F;text-transform:uppercase;letter-spacing:0.8px">Position</th>'
+        f'<th style="padding:9px 14px;text-align:left;font-size:0.68rem;font-weight:800;color:#00529F;text-transform:uppercase;letter-spacing:0.8px;white-space:nowrap">{t("table_player")}</th>'
+        f'<th style="padding:9px 14px;text-align:left;font-size:0.68rem;font-weight:800;color:#00529F;text-transform:uppercase;letter-spacing:0.8px">{t("table_position")}</th>'
         + "".join(
             f'<th style="padding:9px 14px;text-align:center;font-size:0.68rem;font-weight:800;color:#00529F;text-transform:uppercase;letter-spacing:0.8px">{t(f"target_{m}")}</th>'
             for m in TARGETS
         )
-        + '<th style="padding:9px 14px;text-align:center;font-size:0.68rem;font-weight:800;color:#00529F;text-transform:uppercase;letter-spacing:0.8px">Status</th>'
+        + f'<th style="padding:9px 14px;text-align:center;font-size:0.68rem;font-weight:800;color:#00529F;text-transform:uppercase;letter-spacing:0.8px">{t("table_status")}</th>'
         + '</tr></thead>'
     )
 
@@ -244,7 +242,7 @@ def page_dashboard() -> None:
         pos     = t_pos(player_data[pid]["position"])
         worst   = _worst(pid)
         wcolor  = ZONE_COLORS[worst]
-        status_labels = {"danger": "HIGH RISK", "caution": "CAUTION", "optimal": "OK", "undertraining": "LOW", "unknown": "—"}
+        status_labels = {"danger": t("status_high_risk"), "caution": t("status_caution"), "optimal": t("status_ok"), "undertraining": t("status_low"), "unknown": "—"}
         status  = status_labels.get(worst, "—")
 
         cells = ""
@@ -803,22 +801,24 @@ def _render_forecast_results(
     if forecast_is_stale:
         st.info(t("forecast_stale_warning"), icon="⚠️")
 
-    plan_days: list[dict] = st.session_state.get("plan_days", [])
+    _ = st.session_state.get("plan_days", [])  # unused here; accessed per-player below
 
     danger_entries: list[tuple[str, list[tuple[str, str | None, float | None, float | None]]]] = []
     for pid in all_pids:
         bad_metrics = []
         for metric in TARGETS:
-            mdata = forecast[str(pid)][metric]
+            mdata        = cast(dict, forecast[str(pid)][metric])
+            fore_dates   = cast(list, mdata["fore_dates"])
+            fore_acwr    = cast(list, mdata["fore_acwr"])
             first_danger_idx: int | None = next(
-                (i for i, (_, v) in enumerate(zip(mdata["fore_dates"], mdata["fore_acwr"])) if v is not None and v >= 1.5),
+                (i for i, (_, v) in enumerate(zip(fore_dates, fore_acwr, strict=False)) if v is not None and v >= 1.5),
                 None,
             )
             if first_danger_idx is None:
                 continue
-            first_danger_date: str | None = mdata["fore_dates"][first_danger_idx]
-            first_danger_acwr: float | None = mdata["fore_acwr"][first_danger_idx]
-            bad_metrics.append((t(f"target_{metric}"), first_danger_date, first_danger_acwr, mdata["day15_acwr"]))
+            first_danger_date: str | None = fore_dates[first_danger_idx]
+            first_danger_acwr: float | None = fore_acwr[first_danger_idx]
+            bad_metrics.append((t(f"target_{metric}"), first_danger_date, first_danger_acwr, mdata.get("day15_acwr")))
         if bad_metrics:
             danger_entries.append((str(pid), bad_metrics))
 
@@ -867,10 +867,10 @@ def _render_forecast_results(
 
         thead = (
             '<thead><tr style="background:#FFF5F5;border-bottom:2px solid #FECACA">'
-            '<th style="padding:8px 14px;text-align:left;font-size:0.68rem;font-weight:800;color:#B91C3C;text-transform:uppercase;letter-spacing:0.8px;white-space:nowrap">Player</th>'
-            '<th style="padding:8px 14px;text-align:left;font-size:0.68rem;font-weight:800;color:#B91C3C;text-transform:uppercase;letter-spacing:0.8px">Metric</th>'
-            '<th style="padding:8px 14px;text-align:left;font-size:0.68rem;font-weight:800;color:#B91C3C;text-transform:uppercase;letter-spacing:0.8px;white-space:nowrap">Enters Danger</th>'
-            '<th style="padding:8px 14px;text-align:center;font-size:0.68rem;font-weight:800;color:#B91C3C;text-transform:uppercase;letter-spacing:0.8px;white-space:nowrap">Day 15</th>'
+            f'<th style="padding:8px 14px;text-align:left;font-size:0.68rem;font-weight:800;color:#B91C3C;text-transform:uppercase;letter-spacing:0.8px;white-space:nowrap">{t("table_player")}</th>'
+            f'<th style="padding:8px 14px;text-align:left;font-size:0.68rem;font-weight:800;color:#B91C3C;text-transform:uppercase;letter-spacing:0.8px">{t("table_load_metric")}</th>'
+            f'<th style="padding:8px 14px;text-align:left;font-size:0.68rem;font-weight:800;color:#B91C3C;text-transform:uppercase;letter-spacing:0.8px;white-space:nowrap">{t("table_enters_danger")}</th>'
+            f'<th style="padding:8px 14px;text-align:center;font-size:0.68rem;font-weight:800;color:#B91C3C;text-transform:uppercase;letter-spacing:0.8px;white-space:nowrap">{t("table_day15_acwr")}</th>'
             '</tr></thead>'
         )
 
@@ -884,8 +884,8 @@ def _render_forecast_results(
             # Header
             '<div style="background:#FFF5F5;padding:11px 16px;border-bottom:1px solid #FECACA;display:flex;align-items:center;gap:10px;flex-wrap:wrap">',
             '<span style="font-size:0.95rem">&#9888;&#65039;</span>',
-            f'<span style="font-weight:800;color:#B91C3C;font-size:0.88rem;text-transform:uppercase;letter-spacing:0.6px">Injury Risk Alert</span>',
-            f'<span style="color:#64748B;font-size:0.8rem">— {len(critical)} player{"s" if len(critical)!=1 else ""} at risk by Day 15</span>',
+            f'<span style="font-weight:800;color:#B91C3C;font-size:0.88rem;text-transform:uppercase;letter-spacing:0.6px">{t("injury_risk_alert")}</span>',
+            f'<span style="color:#64748B;font-size:0.8rem">— {len(critical)} player{"s" if len(critical)!=1 else ""} {t("alert_still_in_danger")}</span>',
             '</div>',
         ]
 
@@ -900,7 +900,7 @@ def _render_forecast_results(
         if recovered:
             html_parts += [
                 f'<div style="background:#FFF5F5;padding:8px 16px;border-top:1px solid #FECACA;font-size:0.78rem;color:#64748B">'
-                f'<span style="font-weight:700;color:#B91C3C">Briefly entered danger (recovered by Day 15):</span> {recovered_names}'
+                f'<span style="font-weight:700;color:#B91C3C">{t("alert_recovered_note")}</span> {recovered_names}'
                 f'</div>',
             ]
 
@@ -924,7 +924,7 @@ def _render_forecast_results(
             unsafe_allow_html=True,
         )
 
-    show_load = st.checkbox("Show load", key="forecast_show_load", value=False)
+    show_load = st.checkbox(t("label_show_load"), key="forecast_show_load", value=False)
 
     for metric in TARGETS:
         meta = TARGET_META[metric]
@@ -1146,6 +1146,524 @@ def page_results() -> None:
     page_planner()
 
 
+# =============================================================================
+# Player Customization page
+# =============================================================================
+
+def page_player_customization() -> None:
+    """Customise squad plan for an individual at-risk player and compare forecasts."""
+    player_data, all_pids, current_acwr, _ = load_player_data()
+    get_models_or_stop()
+
+    # ── Header ────────────────────────────────────────────────────────────────
+    st.markdown(f"""
+    <div style="padding:2rem 0 1.4rem;border-bottom:1px solid #E2EBF6;margin-bottom:1.8rem;text-align:center">
+        <div style="display:inline-block;width:44px;height:4px;border-radius:2px;
+                    background:linear-gradient(90deg,#FEBE10,#00529F);margin-bottom:1rem"></div>
+        <div style="font-size:2.1rem;font-weight:900;color:#00529F;letter-spacing:-1px;margin-bottom:0.4rem">
+            {t("pc_title")}
+        </div>
+        <div style="font-size:0.95rem;color:#64748B">
+            {t("pc_subtitle")}
+        </div>
+    </div>""", unsafe_allow_html=True)
+
+    # ── Guard: squad forecast must exist ──────────────────────────────────────
+    squad_forecast  = cast(dict, st.session_state.get("forecast"))
+    squad_plan_days = st.session_state.get("plan_days", [])
+
+    if not squad_forecast or not squad_plan_days:
+        st.info(t("pc_no_forecast"), icon="📅")
+        return
+
+    player_prefix = t("player_prefix")
+    zone_order    = ["danger", "caution", "undertraining", "optimal", "unknown"]
+
+    # ── Identify at-risk players from squad forecast ──────────────────────────
+    def _first_danger(pid: int) -> str | None:
+        for m in TARGETS:
+            mdata = squad_forecast.get(str(pid), {}).get(m, {})
+            for d, v in zip(mdata.get("fore_dates", []), mdata.get("fore_acwr", []), strict=False):
+                if v is not None and v >= 1.5:
+                    return d
+        return None
+
+    at_risk_pids = [pid for pid in all_pids if _first_danger(pid) is not None]
+
+    if not at_risk_pids:
+        st.success(t("pc_no_danger"), icon="✅")
+        return
+
+    # At-risk summary chips
+    chips = " ".join(
+        f'<span style="display:inline-block;padding:3px 10px;margin:2px;border-radius:5px;'
+        f'background:#EE324E14;color:#EE324E;font-weight:700;font-size:0.78rem;'
+        f'border:1px solid #EE324E30">{player_prefix} {pid}</span>'
+        for pid in at_risk_pids
+    )
+    st.markdown(
+        f'<div style="margin-bottom:1.4rem"><span style="font-size:0.75rem;font-weight:800;'
+        f'text-transform:uppercase;letter-spacing:0.8px;color:#EE324E;margin-right:8px">{t("pc_at_risk")}</span>'
+        f'{chips}</div>',
+        unsafe_allow_html=True,
+    )
+
+    # ── Player selector (default to first at-risk player) ────────────────────
+    pid_options = {
+        f"{player_prefix} {pid} · {t_pos(str(player_data[pid]['position']))}": pid
+        for pid in at_risk_pids
+    }
+    all_pid_options = {
+        f"{player_prefix} {pid} · {t_pos(str(player_data[pid]['position']))}": pid
+        for pid in all_pids
+    }
+    show_all = st.checkbox(t("pc_show_all"), key="pc_show_all", value=False)
+    options  = all_pid_options if show_all else pid_options
+
+    selected_label = st.selectbox(t("pc_select_player"), list(options.keys()), key="pc_player_selector")
+    selected_pid   = options[selected_label]
+    pdata          = player_data[selected_pid]
+    last_active    = pdata["last_active"]
+    pid_str        = str(selected_pid)
+
+    # ── Player profile + squad forecast status ────────────────────────────────
+    worst_zone = min(
+        (current_acwr[selected_pid][m]["zone"] for m in TARGETS),
+        key=zone_order.index,
+    )
+    wcolor = ZONE_COLORS[worst_zone]
+
+    prof_col, status_col = st.columns([1, 2.2], gap="large")
+    with prof_col:
+        first_danger_date = _first_danger(selected_pid) or "—"
+        st.markdown(f"""
+        <div style="background:#FFFFFF;border:1px solid #D7E4F1;border-left:5px solid {wcolor};
+                    border-radius:12px;padding:1.3rem 1.4rem;box-shadow:0 2px 8px rgba(0,60,140,0.06)">
+            <div style="font-family:Courier New,monospace;font-size:1.1rem;font-weight:800;
+                        color:#0F172A;margin-bottom:3px">{player_prefix} {selected_pid}</div>
+            <div style="font-size:0.75rem;font-weight:800;color:#00529F;text-transform:uppercase;
+                        letter-spacing:0.6px;margin-bottom:1rem">{t_pos(str(pdata["position"]))}</div>
+            <div style="font-size:0.82rem;color:#475569;display:flex;flex-direction:column;gap:5px">
+                <div><span style="font-weight:700;color:#334D6E">{t("label_last_active")}:</span> {fmt_date_medium(last_active)}</div>
+                <div><span style="font-weight:700;color:#334D6E">{t("label_active_days")}:</span> {pdata["n_active_days"]}</div>
+                <div><span style="font-weight:700;color:#EE324E">{t("label_enters_danger")}:</span>
+                    <span style="color:#EE324E;font-weight:800">{first_danger_date}</span>
+                </div>
+            </div>
+        </div>""", unsafe_allow_html=True)
+
+    with status_col:
+        st.markdown(f'<div style="font-size:0.72rem;font-weight:800;text-transform:uppercase;letter-spacing:0.8px;color:#00529F;margin-bottom:8px">{t("pc_squad_forecast")}</div>', unsafe_allow_html=True)
+        metric_cols = st.columns(3)
+        for col, metric in zip(metric_cols, TARGETS, strict=False):
+            sq = squad_forecast.get(pid_str, {}).get(metric, {})
+            d15  = sq.get("day15_acwr")
+            zone = sq.get("day15_zone", "unknown")
+            zc   = ZONE_COLORS[zone]
+            vs   = f"{d15:.2f}" if isinstance(d15, float) else "—"
+            col.markdown(f"""
+            <div style="background:#FFFFFF;border:1px solid {zc}28;border-top:4px solid {zc};
+                        border-radius:10px;padding:0.9rem 1rem;text-align:center">
+                <div style="font-size:0.68rem;font-weight:800;text-transform:uppercase;
+                            letter-spacing:0.6px;color:#64748B;margin-bottom:6px">{t(f"target_{metric}")}</div>
+                <div style="font-family:Courier New,monospace;font-size:1.5rem;font-weight:900;
+                            color:{zc};line-height:1">{vs}</div>
+                <div style="font-size:0.65rem;font-weight:800;text-transform:uppercase;
+                            color:{zc};margin-top:5px;padding:2px 7px;background:{zc}14;
+                            border-radius:4px;display:inline-block">{t(f"zone_{zone}")}</div>
+            </div>""", unsafe_allow_html=True)
+
+    # ── Custom plan builder (pre-populated from squad plan) ───────────────────
+    st.markdown("<div style='margin-top:1.8rem'></div>", unsafe_allow_html=True)
+    st.markdown(f'<div class="section-label">{t("pc_custom_plan_title")}</div>', unsafe_allow_html=True)
+    st.caption(t("pc_custom_plan_caption"))
+
+    session_labels = get_session_labels()
+    custom_plan_days: list[dict] = []
+
+    # Seed widget defaults from squad plan on first view of this player
+    seed_key = f"pc_seeded_{selected_pid}"
+    if seed_key not in st.session_state:
+        for d, day in enumerate(squad_plan_days):
+            st.session_state[f"pc_rest_{selected_pid}_{d}"]  = day.get("is_rest", True)
+            st.session_state[f"pc_types_{selected_pid}_{d}"] = [s for s in SESSION_TYPES if day.get(s, False)]
+        st.session_state[seed_key] = True
+
+    for d in range(min(15, len(squad_plan_days))):
+        squad_day = squad_plan_days[d]
+        day_date  = last_active + pd.Timedelta(days=d + 1)
+
+        col_label, col_rest, col_types = st.columns([1.5, 0.9, 4], gap="small")
+
+        with col_label:
+            squad_types = [s for s in SESSION_TYPES if squad_day.get(s, False)]
+            squad_tag   = (
+                " ".join(f'<span style="font-size:0.65rem;font-weight:700;color:#00529F;'
+                         f'background:#EEF3FF;padding:0px 5px;border-radius:3px">{s}</span>'
+                         for s in squad_types)
+                if not squad_day.get("is_rest") and squad_types
+                else f'<span style="font-size:0.65rem;color:#94A3B8">{t("pc_rest")}</span>'
+            )
+            st.markdown(
+                f'<div style="padding-top:0.55rem">'
+                f'<div style="font-size:0.85rem;font-weight:700;color:#334D6E">'
+                f'{t("pc_day_label")} {d+1} <span style="font-weight:400;color:#94A3B8;font-size:0.77rem">'
+                f'{day_date.strftime("%a %d %b")}</span></div>'
+                f'<div style="margin-top:2px">{squad_tag}</div></div>',
+                unsafe_allow_html=True,
+            )
+
+        with col_rest:
+            is_rest = st.checkbox(t("pc_rest"), key=f"pc_rest_{selected_pid}_{d}")
+
+        with col_types:
+            if not is_rest:
+                selected_types = st.multiselect(
+                    "",
+                    options=SESSION_TYPES,
+                    format_func=lambda s: f"{s} · {session_labels[s]}",
+                    key=f"pc_types_{selected_pid}_{d}",
+                    label_visibility="collapsed",
+                )
+            else:
+                selected_types = []
+
+        custom_plan_days.append({
+            "is_rest": is_rest,
+            **{s: s in selected_types for s in SESSION_TYPES},
+        })
+
+    st.markdown("<div style='margin-top:1rem'></div>", unsafe_allow_html=True)
+    btn_run, btn_reset, btn_clear = st.columns([2, 1.2, 1])
+
+    if btn_run.button(t("pc_btn_run"), type="primary", use_container_width=True, key="pc_run"):
+        with st.spinner(t("pc_spinner")):
+            st.session_state[f"pc_forecast_{selected_pid}"] = build_player_forecast(custom_plan_days, selected_pid)
+
+    if btn_reset.button(t("pc_btn_reset"), type="secondary", use_container_width=True, key="pc_reset"):
+        st.session_state.pop(seed_key, None)
+        st.session_state.pop(f"pc_forecast_{selected_pid}", None)
+        st.rerun()
+
+    if btn_clear.button(t("pc_btn_clear"), type="secondary", use_container_width=True, key="pc_clear"):
+        st.session_state.pop(f"pc_forecast_{selected_pid}", None)
+        st.rerun()
+
+    # ── Comparison: Squad Plan vs Custom Plan ─────────────────────────────────
+    custom_forecast = st.session_state.get(f"pc_forecast_{selected_pid}")
+    if custom_forecast is None:
+        st.markdown("<div style='margin-top:1rem'></div>", unsafe_allow_html=True)
+        st.info(t("pc_info_no_forecast"), icon="📊")
+        return
+
+    st.markdown("---")
+    st.markdown(f'<div class="section-label" style="margin-top:0.5rem">{t("pc_comparison_title")}</div>', unsafe_allow_html=True)
+
+    # Day-15 comparison summary
+    cmp_cols = st.columns(3)
+    for col, metric in zip(cmp_cols, TARGETS, strict=False):
+        sq_d15   = squad_forecast.get(pid_str, {}).get(metric, {}).get("day15_acwr")
+        cu_d15   = custom_forecast.get(pid_str, {}).get(metric, {}).get("day15_acwr")
+        cu_zone  = custom_forecast.get(pid_str, {}).get(metric, {}).get("day15_zone", "unknown")
+        zc       = ZONE_COLORS[cu_zone]
+        sq_str   = f"{sq_d15:.2f}" if isinstance(sq_d15, float) else "—"
+        cu_str   = f"{cu_d15:.2f}" if isinstance(cu_d15, float) else "—"
+        delta    = (cu_d15 - sq_d15) if isinstance(cu_d15, float) and isinstance(sq_d15, float) else None
+        arrow    = ("▼ " + f"{abs(delta):.2f}") if delta is not None and delta < 0 else \
+                   ("▲ " + f"{abs(delta):.2f}") if delta is not None and delta > 0 else "—"
+        arrow_color = "#10B981" if delta is not None and delta < 0 else "#EE324E" if delta is not None and delta > 0 else "#94A3B8"
+        col.markdown(f"""
+        <div style="background:#FFFFFF;border:1px solid {zc}28;border-top:4px solid {zc};
+                    border-radius:10px;padding:1rem;text-align:center;margin-bottom:1rem">
+            <div style="font-size:0.68rem;font-weight:800;text-transform:uppercase;
+                        letter-spacing:0.6px;color:#64748B;margin-bottom:8px">{t(f"target_{metric}")}</div>
+            <div style="display:flex;justify-content:space-around;align-items:center;margin-bottom:8px">
+                <div>
+                    <div style="font-size:0.6rem;color:#94A3B8;font-weight:600;margin-bottom:2px">{t("label_squad")}</div>
+                    <div style="font-family:Courier New,monospace;font-size:1.1rem;font-weight:800;color:#64748B">{sq_str}</div>
+                </div>
+                <div style="font-size:1.2rem;color:#D7E4F1">→</div>
+                <div>
+                    <div style="font-size:0.6rem;color:{zc};font-weight:600;margin-bottom:2px">{t("label_custom")}</div>
+                    <div style="font-family:Courier New,monospace;font-size:1.1rem;font-weight:800;color:{zc}">{cu_str}</div>
+                </div>
+            </div>
+            <div style="font-size:0.75rem;font-weight:800;color:{arrow_color}">{arrow}</div>
+        </div>""", unsafe_allow_html=True)
+
+    # Per-metric charts with both squad + custom forecast overlaid
+    show_load = st.checkbox(t("label_show_load_pc"), key="pc_show_load", value=False)
+
+    for metric in TARGETS:
+        meta = TARGET_META[metric]
+        st.markdown(
+            f'<div class="section-label" style="color:{meta["color"]};margin-top:0.8rem">'
+            f'{t(f"target_{metric}")} &nbsp;·&nbsp; {t("target_acwr_unit")}</div>',
+            unsafe_allow_html=True,
+        )
+
+        sq_mdata = squad_forecast.get(pid_str, {}).get(metric, {})
+        cu_mdata = custom_forecast.get(pid_str, {}).get(metric, {})
+        meta_translated = {**meta, "label": t(f"target_{metric}")}
+
+        import plotly.graph_objects as go  # noqa: PLC0415
+
+
+        # Build chart from custom forecast (history shared, two forecast lines)
+        fig = build_acwr_chart(cu_mdata, meta_translated, show_load=show_load)
+
+        # Add squad forecast line as reference
+        sq_fore_x = sq_mdata.get("fore_dates", [])
+        sq_fore_y = sq_mdata.get("fore_acwr", [])
+        if sq_fore_x and sq_fore_y:
+            fig.add_trace(go.Scatter(
+                x=sq_fore_x, y=sq_fore_y,
+                mode="lines",
+                name=t("pc_squad_plan_trace"),
+                line=dict(color="rgba(100,116,139,0.5)", width=2, dash="dash"),
+                connectgaps=False,
+                hoverinfo="skip",
+            ))
+
+        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+
+
+def _player_effective_plan(pid: int, squad_plan: list[dict]) -> list[dict]:
+    """Return the effective plan for a player: custom if the coach modified it, otherwise squad."""
+    if f"pc_seeded_{pid}" not in st.session_state:
+        return squad_plan
+    return [
+        {
+            "is_rest": st.session_state.get(f"pc_rest_{pid}_{d}", True),
+            **{
+                s: s in st.session_state.get(f"pc_types_{pid}_{d}", [])
+                for s in SESSION_TYPES
+            },
+        }
+        for d in range(len(squad_plan))
+    ]
+
+
+def _cell_text(day: dict) -> str:
+    if day.get("is_rest", True):
+        return "REST"
+    types = [s for s in SESSION_TYPES if day.get(s, False)]
+    return " · ".join(types) if types else "REST"
+
+
+def page_export_plan() -> None:
+    """Render the training plan export page."""
+    import base64
+
+    import streamlit.components.v1 as components
+
+    player_data, all_pids, _, _ = load_player_data()
+    get_models_or_stop()
+
+    # ── Header row ────────────────────────────────────────────────────────────
+    hdr_col, btn_col = st.columns([3, 1])
+    with hdr_col:
+        st.markdown(f"""
+        <div style="padding:1.8rem 0 1.2rem;border-bottom:1px solid #E2EBF6;margin-bottom:1.6rem">
+            <div style="display:inline-block;width:40px;height:4px;border-radius:2px;
+                        background:linear-gradient(90deg,#FEBE10,#00529F);margin-bottom:0.8rem"></div>
+            <div style="font-size:2rem;font-weight:900;color:#00529F;letter-spacing:-1px;margin-bottom:0.3rem">
+                {t("ep_title")}
+            </div>
+            <div style="font-size:0.9rem;color:#64748B">
+                {t("ep_subtitle")}
+            </div>
+        </div>""", unsafe_allow_html=True)
+
+    # ── Guard ─────────────────────────────────────────────────────────────────
+    squad_plan: list[dict] = st.session_state.get("plan_days", [])
+    plan_dates_labels: list[str] = st.session_state.get("plan_dates", [])
+
+    if not squad_plan:
+        st.info(t("ep_no_plan"), icon="📅")
+        return
+
+    # ── Build column headers (date labels) ────────────────────────────────────
+    last_active = max(player_data[pid]["last_active"] for pid in all_pids)
+    if plan_dates_labels:
+        col_headers = plan_dates_labels
+    else:
+        col_headers = [
+            (last_active + pd.Timedelta(days=d + 1)).strftime("%a %d %b")
+            for d in range(len(squad_plan))
+        ]
+
+    # ── Sort players by position ───────────────────────────────────────────────
+    pos_order = {"Full Back": 0, "Central Back": 1, "Central Midfielder": 2, "Winger": 3, "Forward": 4, "Unknown": 99}
+    sorted_pids = sorted(all_pids, key=lambda pid: pos_order.get(player_data[pid]["position"], 99))
+
+    # ── Read logo ─────────────────────────────────────────────────────────────
+    logo_b64 = ""
+    try:
+        logo_b64 = base64.b64encode(STATIC_DIR.joinpath("img", "Real-Madrid-CF-v2002.svg").read_bytes()).decode()
+    except Exception:
+        pass
+
+    # ── Build HTML table rows ─────────────────────────────────────────────────
+    SESSION_COLORS_MAP = SESSION_COLORS  # already imported
+
+    def _cell_html(day: dict) -> str:
+        if day.get("is_rest", True):
+            return f'<span style="color:#94A3B8;font-size:0.72rem;font-weight:600">{t("ep_rest_cell")}</span>'
+        types = [s for s in SESSION_TYPES if day.get(s, False)]
+        if not types:
+            return f'<span style="color:#94A3B8;font-size:0.72rem;font-weight:600">{t("ep_rest_cell")}</span>'
+        badges = "".join(
+            f'<span style="display:inline-block;padding:1px 5px;margin:1px;border-radius:3px;'
+            f'font-size:0.65rem;font-weight:800;letter-spacing:0.3px;'
+            f'background:{SESSION_COLORS_MAP.get(s,"#64748B")}22;'
+            f'color:{SESSION_COLORS_MAP.get(s,"#64748B")};'
+            f'border:1px solid {SESSION_COLORS_MAP.get(s,"#64748B")}44">{s}</span>'
+            for s in types
+        )
+        return badges
+
+    header_cells = "".join(
+        f'<th style="padding:6px 8px;white-space:nowrap;font-size:0.68rem;font-weight:800;'
+        f'text-transform:uppercase;letter-spacing:0.5px;color:#00529F;background:#F0F4FA;'
+        f'border:1px solid #D7E4F1;text-align:center">{h}</th>'
+        for h in col_headers
+    )
+
+    body_rows = ""
+    for pid in sorted_pids:
+        pos  = t_pos(str(player_data[pid]["position"]))
+        plan = _player_effective_plan(pid, squad_plan)
+        customised = f"pc_seeded_{pid}" in st.session_state
+        badge = (
+            f'<span style="font-size:0.58rem;font-weight:800;background:#FEBE1022;color:#B8920A;'
+            f'border:1px solid #FEBE1044;border-radius:3px;padding:0px 4px;margin-left:4px">{t("ep_custom_badge")}</span>'
+            if customised else ""
+        )
+        cells = "".join(
+            f'<td style="padding:6px 8px;border:1px solid #E2EBF6;text-align:center;'
+            f'min-width:70px">{_cell_html(d)}</td>'
+            for d in plan
+        )
+        body_rows += (
+            f'<tr>'
+            f'<td style="padding:6px 10px;border:1px solid #D7E4F1;white-space:nowrap;'
+            f'background:#F8FAFD;font-family:Courier New,monospace;font-size:0.82rem;font-weight:700;'
+            f'color:#0F172A;position:sticky;left:0;z-index:1">'
+            f'{pid}{badge}'
+            f'<div style="font-size:0.62rem;font-weight:700;color:#00529F;text-transform:uppercase;'
+            f'letter-spacing:0.4px;margin-top:1px">{pos}</div>'
+            f'</td>'
+            f'{cells}'
+            f'</tr>'
+        )
+
+    logo_tag = (
+        f'<img src="data:image/svg+xml;base64,{logo_b64}" '
+        f'style="width:64px;height:64px;display:block;margin-bottom:8px" />'
+        if logo_b64 else ""
+    )
+
+    n_custom = sum(1 for pid in all_pids if f"pc_seeded_{pid}" in st.session_state)
+    note = (
+        f'<p style="font-size:0.75rem;color:#64748B;margin:0 0 12px 0">'
+        f'{n_custom} player{"s have" if n_custom != 1 else " has"} a customised plan '
+        f'(marked <span style="background:#FEBE1022;color:#B8920A;border:1px solid #FEBE1044;'
+        f'border-radius:3px;padding:0 4px;font-weight:800;font-size:0.68rem">{t("ep_custom_badge")}</span>).'
+        f'</p>'
+        if n_custom else ""
+    )
+
+    full_html = f"""<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap');
+  * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+  body {{ font-family: Inter, system-ui, sans-serif; background: #fff; color: #0F172A; padding: 0; }}
+  .toolbar {{
+    padding: 10px 16px;
+    background: #F0F4FA;
+    border-bottom: 1px solid #D7E4F1;
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+  }}
+  .btn-print {{
+    background: linear-gradient(135deg,#FEBE10,#FFD84A);
+    color: #0F172A;
+    font-weight: 800;
+    font-size: 0.85rem;
+    border: none;
+    border-radius: 7px;
+    padding: 8px 20px;
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(254,190,16,0.4);
+    letter-spacing: 0.3px;
+  }}
+  .btn-print:hover {{ box-shadow: 0 4px 16px rgba(254,190,16,0.55); }}
+  .content {{ padding: 20px 24px; }}
+  .doc-header {{ display:flex; align-items:center; gap:18px; margin-bottom:20px; padding-bottom:14px; border-bottom:2px solid #00529F; }}
+  .doc-title {{ font-size:1.5rem; font-weight:900; color:#00529F; letter-spacing:-0.5px; }}
+  .doc-sub {{ font-size:0.8rem; color:#64748B; margin-top:3px; }}
+  .table-wrap {{ overflow-x: auto; }}
+  table {{ border-collapse: collapse; width: 100%; font-size: 0.8rem; }}
+  thead th:first-child {{
+    position: sticky; left: 0; z-index: 2; background: #E8EFF8;
+  }}
+  .legend {{ margin-top: 14px; font-size: 0.72rem; color: #64748B; }}
+  @page {{ size: A3 landscape; margin: 14mm 12mm; }}
+  @media print {{
+    .toolbar {{ display: none !important; }}
+    body {{ padding: 0; }}
+    .content {{ padding: 10px 14px; }}
+    table {{ font-size: 0.68rem; }}
+    thead th {{ background: #E8EFF8 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }}
+    td span {{ -webkit-print-color-adjust: exact; print-color-adjust: exact; }}
+  }}
+</style>
+</head>
+<body>
+<div class="toolbar">
+  <button class="btn-print" onclick="window.print()">{t("ep_btn_export")}</button>
+</div>
+<div class="content">
+  <div class="doc-header">
+    {logo_tag}
+    <div>
+      <div class="doc-title">{t("ep_pdf_title")}</div>
+      <div class="doc-sub">{t("ep_pdf_subtitle")} &nbsp;·&nbsp; {t("ep_pdf_schedule").format(n=len(squad_plan), p=len(all_pids))}</div>
+    </div>
+  </div>
+  {note}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th style="padding:6px 10px;font-size:0.68rem;font-weight:800;text-transform:uppercase;
+                     letter-spacing:0.5px;color:#00529F;background:#E8EFF8;border:1px solid #D7E4F1;
+                     white-space:nowrap;position:sticky;left:0;z-index:2">{t("ep_col_player")}</th>
+          {header_cells}
+        </tr>
+      </thead>
+      <tbody>{body_rows}</tbody>
+    </table>
+  </div>
+  <div class="legend" style="margin-top:14px;display:flex;gap:14px;flex-wrap:wrap">
+    {''.join(f'<span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:{SESSION_COLORS_MAP.get(s,"#64748B")};margin-right:4px;vertical-align:middle"></span><strong>{s}</strong> &nbsp;{get_session_labels().get(s,"")}</span>' for s in SESSION_TYPES)}
+    <span><span style="color:#94A3B8">{t("ep_rest_cell")}</span> {t("ep_legend_rest")}</span>
+  </div>
+</div>
+</body>
+</html>"""
+
+    # ── Show in Streamlit ──────────────────────────────────────────────────────
+    # Calculate height: header ~80px + toolbar ~44px + n_players * 42px + legend ~50px
+    table_height = min(80 + 44 + len(all_pids) * 42 + 80, 820)
+    components.html(full_html, height=table_height, scrolling=True)
+
+
 def render_sidebar(logo_path):
     with st.sidebar:
         _logo_b64 = ""
@@ -1165,11 +1683,16 @@ def render_sidebar(logo_path):
 
         st.markdown("---")
         page = st.radio(
-            "Navigation",
+            t("sidebar_navigation"),
             PAGES,
             key="nav_page",
             label_visibility="collapsed",
-            format_func=lambda p: t("nav_dashboard") if p == PAGES[0] else t("nav_planner"),
+            format_func=lambda p: (
+                t("nav_dashboard") if p == PAGES[0]
+                else t("nav_planner") if p == PAGES[1]
+                else t("nav_player_customization") if p == PAGES[2]
+                else t("nav_export_plan")
+            ),
         )
         st.markdown("---")
 
@@ -1189,12 +1712,19 @@ def render_sidebar(logo_path):
             {'<div style="display:inline-block;background:#FFFFFF;border-radius:8px;padding:6px 14px"><img src="data:image/png;base64,' + team_b64 + '" style="width:110px;display:block"></div>' if team_b64 else '<span style="color:rgba(255,255,255,0.5);font-weight:700">trAIn Labs</span>'}
         </div>""", unsafe_allow_html=True)
 
+        def _on_lang_change() -> None:
+            # Preserve the active page across language changes.
+            # format_func switching can cause Streamlit to reset the nav radio;
+            # writing to _pending_nav ensures main.py restores the correct page.
+            st.session_state["_pending_nav"] = st.session_state.get("nav_page", PAGES[0])
+
         st.radio(
             t("sidebar_language"),
             ["ENG", "ESP"],
             key="lang",
             horizontal=True,
             label_visibility="collapsed",
+            on_change=_on_lang_change,
         )
 
         return page

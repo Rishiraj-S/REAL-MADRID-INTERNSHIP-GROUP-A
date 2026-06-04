@@ -156,3 +156,78 @@ def build_forecast(plan_days: list[dict]) -> dict:
             }
 
     return results
+
+
+def build_player_forecast(plan_days: list[dict], pid: int) -> dict:
+    """Forecast loads and ACWR for a single player with a custom plan."""
+    bundles      = get_models_or_stop()
+    player_data, _, _, _ = load_player_data()
+    last_active  = player_data[pid]["last_active"]
+
+    results: dict = {str(pid): {
+        "position":      player_data[pid]["position"],
+        "n_active_days": player_data[pid]["n_active_days"],
+    }}
+
+    def _to_dates(base: pd.Timestamp, n: int) -> list[str]:
+        return [(base + pd.Timedelta(days=i)).strftime("%d %b") for i in range(n)]
+
+    def _clean(vals) -> list:
+        return [
+            None if (v is None or (isinstance(v, float) and np.isnan(v)))
+            else round(float(v), 3) for v in vals
+        ]
+
+    for target, bundle in bundles.items():
+        plan_frame      = _build_plan_frame(plan_days, [pid], player_data, last_active, target)
+        forecast_result = _direct_forecast(plan_frame, target, bundle)
+
+        pdata     = player_data[pid]
+        hist_grid = pdata["grid"]
+
+        pid_fore   = forecast_result[forecast_result["player_id"] == pid].sort_values("date")
+        fore_loads = pid_fore[target].fillna(0.0).values.astype(float)
+
+        hist_loads = hist_grid[target].values.astype(float)
+        full       = compute_acwr_with_forecast(hist_loads, fore_loads)
+        n_hist     = len(hist_loads)
+        chunk      = full.iloc[max(0, n_hist - HIST_SHOW):]
+
+        hist_c     = chunk[~chunk["is_forecast"]]
+        fore_c     = chunk[chunk["is_forecast"]]
+        hist_start = pdata["last_active"] - pd.Timedelta(days=len(hist_c) - 1)
+
+        has_cols   = sorted([c for c in hist_grid.columns if c.startswith("has_")])
+        act_lookup = hist_grid.set_index("date")[has_cols] if has_cols else None
+        hist_activities: list[list[str]] = []
+        for i in range(len(hist_c)):
+            dt = hist_start + pd.Timedelta(days=i)
+            if act_lookup is not None and dt in act_lookup.index:
+                row = act_lookup.loc[dt]
+                hist_activities.append([h[4:] for h in has_cols if row[h] > 0])
+            else:
+                hist_activities.append([])
+
+        fore_activities: list[list[str]] = [
+            [] if plan_days[i].get("is_rest", False)
+            else [s for s in SESSION_TYPES if plan_days[i].get(s, False)]
+            for i in range(min(len(fore_c), len(plan_days)))
+        ]
+
+        valid_fore = fore_c["acwr"].dropna()
+        day15_val  = float(valid_fore.iloc[-1]) if len(valid_fore) > 0 else None
+
+        results[str(pid)][target] = {
+            "hist_dates":      _to_dates(hist_start, len(hist_c)),
+            "hist_acwr":       _clean(hist_c["acwr"].values),
+            "hist_load":       _clean(hist_c["load"].values),
+            "hist_activities": hist_activities,
+            "fore_dates":      _to_dates(last_active + pd.Timedelta(days=1), len(fore_c)),
+            "fore_acwr":       _clean(fore_c["acwr"].values),
+            "fore_load":       _clean(fore_c["load"].values),
+            "fore_activities": fore_activities,
+            "day15_acwr":      round(day15_val, 3) if day15_val is not None else None,
+            "day15_zone":      classify_acwr_zone(day15_val) if day15_val is not None else "unknown",
+        }
+
+    return results

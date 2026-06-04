@@ -50,10 +50,12 @@ def load_player_data():
         dr = pd.date_range(start_date, end_date, freq="D")
 
         # Complete daily calendar grid; fillna(0) ensures rest days carry zero load
+        has_cols = [c for c in grp.columns if c.startswith("has_")]
+        merge_cols = ["date", "total_distance", "accelerations", "sprint_distance"] + has_cols
         merged = pd.DataFrame({"date": dr}).merge(
-            grp[["date", "total_distance", "accelerations", "sprint_distance", "has_MATCH"]],
+            grp[merge_cols],
             on="date", how="left",
-        ).fillna({"total_distance": 0.0, "accelerations": 0.0, "sprint_distance": 0.0, "has_MATCH": 0})
+        ).fillna({c: 0.0 for c in merge_cols if c != "date"})
 
         pos_label = str(grp.iloc[-1]["position"]) if "position" in grp.columns else "Unknown"
 

@@ -21,14 +21,14 @@ TARGET_META = {
     "accelerations": {
         "label": "Accelerations",
         "unit": "efforts",
-        "color": "#FEBE10",
-        "fill": "rgba(254,190,16,0.12)",
+        "color": "#00529F",
+        "fill": "rgba(0,82,159,0.12)",
     },
     "sprint_distance": {
         "label": "Sprint Distance",
         "unit": "m",
-        "color": "#EE324E",
-        "fill": "rgba(238,50,78,0.12)",
+        "color": "#00529F",
+        "fill": "rgba(0,82,159,0.12)",
     },
 }
 SESSION_COLORS = {

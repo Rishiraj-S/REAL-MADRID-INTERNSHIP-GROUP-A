@@ -120,16 +120,39 @@ def build_forecast(plan_days: list[dict]) -> dict:
                     else round(float(v), 3) for v in vals
                 ]
 
+            # Activities per hist day from grid has_* columns
+            has_cols = sorted([c for c in hist_grid.columns if c.startswith("has_")])
+            act_lookup = hist_grid.set_index("date")[has_cols] if has_cols else None
+            hist_activities: list[list[str]] = []
+            for i in range(len(hist_c)):
+                dt = hist_start + pd.Timedelta(days=i)
+                if act_lookup is not None and dt in act_lookup.index:
+                    row = act_lookup.loc[dt]
+                    hist_activities.append([h[4:] for h in has_cols if row[h] > 0])
+                else:
+                    hist_activities.append([])
+
+            # Activities per forecast day from plan_days
+            fore_activities: list[list[str]] = [
+                [] if plan_days[i].get("is_rest", False)
+                else [s for s in SESSION_TYPES if plan_days[i].get(s, False)]
+                for i in range(min(len(fore_c), len(plan_days)))
+            ]
+
             valid_fore = fore_c["acwr"].dropna()
             day15_val  = float(valid_fore.iloc[-1]) if len(valid_fore) > 0 else None
 
             results[str(pid)][target] = {
-                "hist_dates": to_dates(hist_start, len(hist_c)),
-                "hist_acwr":  clean(hist_c["acwr"].values),
-                "fore_dates": to_dates(last_active + pd.Timedelta(days=1), len(fore_c)),
-                "fore_acwr":  clean(fore_c["acwr"].values),
-                "day15_acwr": round(day15_val, 3) if day15_val is not None else None,
-                "day15_zone": classify_acwr_zone(day15_val) if day15_val is not None else "unknown",
+                "hist_dates":      to_dates(hist_start, len(hist_c)),
+                "hist_acwr":       clean(hist_c["acwr"].values),
+                "hist_load":       clean(hist_c["load"].values),
+                "hist_activities": hist_activities,
+                "fore_dates":      to_dates(last_active + pd.Timedelta(days=1), len(fore_c)),
+                "fore_acwr":       clean(fore_c["acwr"].values),
+                "fore_load":       clean(fore_c["load"].values),
+                "fore_activities": fore_activities,
+                "day15_acwr":      round(day15_val, 3) if day15_val is not None else None,
+                "day15_zone":      classify_acwr_zone(day15_val) if day15_val is not None else "unknown",
             }
 
     return results

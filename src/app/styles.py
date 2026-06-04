@@ -123,7 +123,7 @@ header[data-testid="stHeader"] { background: transparent !important; }
 .page-title {
     font-size: 2.4rem;
     font-weight: 900;
-    color: #0F172A;
+    color: #00529F;
     letter-spacing: -1px;
     line-height: 1.1;
     margin-bottom: 0.6rem;
@@ -530,6 +530,16 @@ hr { border-color: #E2EBF6 !important; margin: 1.5rem 0 !important; }
 
 /* Spinner */
 [data-testid="stSpinner"] p { color: #00529F !important; }
+
+/* Checkboxes */
+[data-testid="stCheckbox"] label p,
+[data-testid="stCheckbox"] label span {
+    color: #00529F !important;
+    font-weight: 700 !important;
+}
+
+/* Generic headings */
+h1, h2, h3, h4 { color: #00529F !important; }
 </style>
 """
 

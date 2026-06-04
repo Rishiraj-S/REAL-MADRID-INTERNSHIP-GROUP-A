@@ -71,110 +71,216 @@ def _render_standard_header(title: str, subtitle: str) -> None:
 
 
 def page_dashboard() -> None:
-    """Render the squad-level ACWR status dashboard."""
+    """Render the ACWR methodology dashboard."""
     player_data, all_pids, current_acwr, _ = load_player_data()
     get_models_or_stop()
     last_date = fmt_date_full(player_data[all_pids[0]]["last_active"])
 
+    # ── Header ────────────────────────────────────────────────────────────────
     st.markdown(f"""
-    <div class="page-header">
-        <div class="page-header-accent"></div>
-        <div class="page-title">{t("dashboard_title")}</div>
-        <div class="page-sub">
-            {t("dashboard_sub").format(date=last_date, n=len(all_pids))}
+    <div style="padding:2.2rem 0 1.6rem;border-bottom:1px solid #E2EBF6;margin-bottom:2rem;text-align:center">
+        <div style="display:inline-block;width:44px;height:4px;border-radius:2px;
+                    background:linear-gradient(90deg,#FEBE10,#00529F);margin-bottom:1rem"></div>
+        <div style="font-size:2.2rem;font-weight:900;color:#00529F;letter-spacing:-1px;line-height:1.1;margin-bottom:0.5rem">
+            Squad ACWR Dashboard
+        </div>
+        <div style="font-size:0.95rem;color:#64748B;font-weight:400">
+            Data through <strong style="color:#334D6E">{last_date}</strong>
         </div>
     </div>""", unsafe_allow_html=True)
 
-    n_danger = sum(1 for pid in all_pids for metric in TARGETS if current_acwr[pid][metric]["zone"] == "danger")
-    n_caution = sum(1 for pid in all_pids for metric in TARGETS if current_acwr[pid][metric]["zone"] == "caution")
-    n_optimal = sum(1 for pid in all_pids for metric in TARGETS if current_acwr[pid][metric]["zone"] == "optimal")
+    # ── Season / squad / method info bar ─────────────────────────────────────
+    st.markdown(f"""
+    <div style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:2rem">
+        <div style="flex:1;min-width:160px;background:linear-gradient(135deg,#00529F,#0369a1);
+                    border-radius:12px;padding:1.1rem 1.3rem;color:#fff">
+            <div style="font-size:0.65rem;font-weight:800;text-transform:uppercase;letter-spacing:1.2px;
+                        opacity:0.65;margin-bottom:5px">Season</div>
+            <div style="font-size:1.15rem;font-weight:800">2024 &ndash; 25</div>
+        </div>
+        <div style="flex:1;min-width:160px;background:linear-gradient(135deg,#00529F,#0369a1);
+                    border-radius:12px;padding:1.1rem 1.3rem;color:#fff">
+            <div style="font-size:0.65rem;font-weight:800;text-transform:uppercase;letter-spacing:1.2px;
+                        opacity:0.65;margin-bottom:5px">Squad</div>
+            <div style="font-size:1.15rem;font-weight:800">{len(all_pids)} Players &nbsp;&middot;&nbsp; 3 Metrics</div>
+        </div>
+        <div style="flex:2;min-width:260px;background:linear-gradient(135deg,#00529F,#0369a1);
+                    border-radius:12px;padding:1.1rem 1.3rem;color:#fff">
+            <div style="font-size:0.65rem;font-weight:800;text-transform:uppercase;letter-spacing:1.2px;
+                        opacity:0.65;margin-bottom:5px">Smoothing Method</div>
+            <div style="font-size:1.05rem;font-weight:800">
+                EWMA &nbsp;&middot;&nbsp;
+                &alpha;<sub>acute</sub> = 0.25 &nbsp;&middot;&nbsp;
+                &alpha;<sub>chronic</sub> &asymp; 0.07
+            </div>
+        </div>
+    </div>""", unsafe_allow_html=True)
 
-    c1, c2, c3, c4 = st.columns(4)
-    c1.markdown(f"""<div class="stat-card" style="border-top-color:#EE324E">
-        <div class="stat-val" style="color:#EE324E">{n_danger}</div>
-        <div class="stat-lbl">{t("kpi_danger_flags")}</div>
-    </div>""", unsafe_allow_html=True)
-    c2.markdown(f"""<div class="stat-card" style="border-top-color:#F59E0B">
-        <div class="stat-val" style="color:#F59E0B">{n_caution}</div>
-        <div class="stat-lbl">{t("kpi_caution_flags")}</div>
-    </div>""", unsafe_allow_html=True)
-    c3.markdown(f"""<div class="stat-card" style="border-top-color:#10B981">
-        <div class="stat-val" style="color:#10B981">{n_optimal}</div>
-        <div class="stat-lbl">{t("kpi_optimal_flags")}</div>
-    </div>""", unsafe_allow_html=True)
-    c4.markdown(f"""<div class="stat-card" style="border-top-color:#00529F">
-        <div class="stat-val" style="color:#00529F">{len(all_pids)}</div>
-        <div class="stat-lbl">{t("kpi_players_tracked")}</div>
-    </div>""", unsafe_allow_html=True)
+    # ── ACWR formula ─────────────────────────────────────────────────────────
+    st.markdown('<div class="section-label" style="margin-bottom:0.9rem">What is ACWR?</div>', unsafe_allow_html=True)
 
-    st.markdown("<div style='margin-top:1.5rem'></div>", unsafe_allow_html=True)
-    st.markdown(
-        f'<div class="section-label" style="font-size:1rem;letter-spacing:0.5px">{t("section_risk_zones")}</div>',
-        unsafe_allow_html=True,
-    )
-
-    legend_cols = st.columns(4)
-    for index, (zone, rng) in enumerate([
-        ("undertraining", "ACWR < 0.8"),
-        ("optimal", "ACWR 0.8 – 1.3"),
-        ("caution", "ACWR 1.3 – 1.5"),
-        ("danger", "ACWR ≥ 1.5"),
-    ]):
-        color = ZONE_COLORS[zone]
-        label = t(f"zone_{zone}")
-        legend_cols[index].markdown(f"""
-        <div class="zone-pill" style="color:{color};border-color:{color};background:{color}15">
-            <span class="zone-dot" style="background:{color}"></span>
-            {label} &nbsp; <span style="font-weight:400;opacity:0.8">{rng}</span>
+    left_col, right_col = st.columns([1, 1.6], gap="large")
+    with left_col:
+        st.markdown("""
+        <div style="background:#FFFFFF;border:1px solid #D7E4F1;border-radius:12px;
+                    padding:1.5rem 1.6rem;height:100%">
+            <div style="font-size:0.88rem;color:#475569;line-height:1.75;margin-bottom:1.2rem">
+                The <strong style="color:#00529F">Acute:Chronic Workload Ratio</strong> compares a
+                player's recent training load against their longer term baseline. A ratio far above
+                1.0 signals a sudden spike in load, a known injury risk indicator in sport science.
+            </div>
+            <div style="display:flex;align-items:center;justify-content:center;gap:1.4rem;
+                        padding:1.1rem;background:#F0F4FA;border-radius:10px">
+                <span style="font-size:1.25rem;font-weight:900;color:#00529F">ACWR =</span>
+                <div style="display:inline-flex;flex-direction:column;align-items:center">
+                    <span style="font-size:1rem;font-weight:700;color:#00529F;padding-bottom:5px">Acute Load</span>
+                    <div style="width:100%;height:2.5px;background:#00529F;border-radius:2px"></div>
+                    <span style="font-size:1rem;font-weight:700;color:#00529F;padding-top:5px">Chronic Load</span>
+                </div>
+            </div>
         </div>""", unsafe_allow_html=True)
 
-    st.markdown("---")
-    st.markdown(
-        f'<div class="section-label" style="font-size:1rem;letter-spacing:0.5px">{t("section_player_status")}</div>',
-        unsafe_allow_html=True,
+    with right_col:
+        for title, days, alpha, desc in [
+            ("Acute Load", "7 days", "&alpha; = 0.25",
+             "Short term fatigue. Reflects how hard the player has trained recently. High sensitivity to recent session spikes."),
+            ("Chronic Load", "28 days", "&alpha; &asymp; 0.07",
+             "Long term fitness baseline. Represents the player's accumulated conditioning over the past month."),
+            ("EWMA", "", "",
+             "Exponentially Weighted Moving Average. Gives higher weight to recent sessions and decays smoothly on rest days, more responsive than a simple rolling average."),
+        ]:
+            badge = f'<span style="font-family:Courier New,monospace;font-size:0.72rem;font-weight:700;color:#00529F;background:#EEF3FF;padding:1px 7px;border-radius:4px;margin-left:6px">{days}</span>' if days else ""
+            alpha_badge = f'<span style="font-family:Courier New,monospace;font-size:0.72rem;font-weight:700;color:#475569;background:#F1F5F9;padding:1px 7px;border-radius:4px;margin-left:4px">{alpha}</span>' if alpha else ""
+            st.markdown(f"""
+            <div style="background:#FFFFFF;border:1px solid #D7E4F1;border-radius:10px;
+                        padding:0.85rem 1.1rem;margin-bottom:0.7rem;display:flex;gap:0.9rem;align-items:flex-start">
+                <div style="width:6px;min-width:6px;height:6px;border-radius:50%;background:#00529F;margin-top:7px"></div>
+                <div>
+                    <div style="font-size:0.8rem;font-weight:800;color:#00529F;text-transform:uppercase;
+                                letter-spacing:0.5px;margin-bottom:3px">
+                        {title}{badge}{alpha_badge}
+                    </div>
+                    <div style="font-size:0.83rem;color:#475569;line-height:1.55">{desc}</div>
+                </div>
+            </div>""", unsafe_allow_html=True)
+
+    # ── Risk zones ───────────────────────────────────────────────────────────
+    st.markdown('<div class="section-label" style="margin-top:1.8rem;margin-bottom:0.9rem">Risk Zones</div>', unsafe_allow_html=True)
+    zone_info = [
+        ("undertraining", "ACWR < 0.8",  "Undertraining",
+         "Recent load well below baseline. Fitness may be declining; player not adequately prepared for match demands."),
+        ("optimal",       "0.8 to 1.3",  "Optimal",
+         "Acute and chronic load are balanced. Sweet spot for performance and injury prevention."),
+        ("caution",       "1.3 to 1.5",  "Caution",
+         "Load noticeably above baseline. Injury risk is elevated. Monitor closely and consider reducing intensity."),
+        ("danger",        "ACWR ≥ 1.5",  "High Risk",
+         "Acute load far exceeds baseline. Significantly increased soft tissue injury risk. Immediate load reduction recommended."),
+    ]
+    zone_cols = st.columns(4)
+    for col, (zone, rng, label, desc) in zip(zone_cols, zone_info):
+        color = ZONE_COLORS[zone]
+        col.markdown(f"""
+        <div style="border:1px solid {color}28;border-top:4px solid {color};border-radius:12px;
+                    padding:1.1rem 1.1rem 1.2rem;background:#FFFFFF;height:100%;
+                    box-shadow:0 2px 8px {color}10">
+            <div style="display:flex;align-items:center;gap:7px;margin-bottom:7px">
+                <span style="width:9px;height:9px;border-radius:50%;background:{color};flex-shrink:0"></span>
+                <span style="font-weight:800;color:{color};font-size:0.9rem">{label}</span>
+            </div>
+            <div style="font-family:Courier New,monospace;font-size:0.76rem;font-weight:700;
+                        color:{color};margin-bottom:10px;padding:2px 9px;background:{color}14;
+                        border-radius:5px;display:inline-block">{rng}</div>
+            <div style="font-size:0.8rem;color:#64748B;line-height:1.6">{desc}</div>
+        </div>""", unsafe_allow_html=True)
+
+    # ── Current player status ─────────────────────────────────────────────────
+    st.markdown('<div class="section-label" style="margin-top:2rem;margin-bottom:0.9rem">Current Player Status</div>', unsafe_allow_html=True)
+
+    # KPI summary
+    n_danger    = sum(1 for pid in all_pids for m in TARGETS if current_acwr[pid][m]["zone"] == "danger")
+    n_caution   = sum(1 for pid in all_pids for m in TARGETS if current_acwr[pid][m]["zone"] == "caution")
+    n_optimal   = sum(1 for pid in all_pids for m in TARGETS if current_acwr[pid][m]["zone"] == "optimal")
+    n_under     = sum(1 for pid in all_pids for m in TARGETS if current_acwr[pid][m]["zone"] == "undertraining")
+
+    k1, k2, k3, k4 = st.columns(4)
+    for col, label, val, color in [
+        (k1, "High Risk Flags",   n_danger,  "#EE324E"),
+        (k2, "Caution Flags",     n_caution, "#F59E0B"),
+        (k3, "Optimal Flags",     n_optimal, "#10B981"),
+        (k4, "Undertraining",     n_under,   "#64748B"),
+    ]:
+        col.markdown(f"""
+        <div style="background:#FFFFFF;border:1px solid #E2EBF6;border-top:4px solid {color};
+                    border-radius:12px;padding:1.1rem 1.3rem;box-shadow:0 2px 8px rgba(0,60,140,0.06);
+                    margin-bottom:1rem">
+            <div style="font-size:2rem;font-weight:900;color:{color};line-height:1;margin-bottom:5px">{val}</div>
+            <div style="font-size:0.72rem;font-weight:800;text-transform:uppercase;letter-spacing:0.8px;
+                        color:#64748B">{label}</div>
+        </div>""", unsafe_allow_html=True)
+
+    # Player table — sorted by worst zone then position
+    zone_order   = ["danger", "caution", "undertraining", "optimal", "unknown"]
+    pos_order    = {"Full Back": 0, "Central Back": 1, "Central Midfielder": 2, "Winger": 3, "Forward": 4, "Unknown": 99}
+
+    def _worst(pid: int) -> str:
+        return min((current_acwr[pid][m]["zone"] for m in TARGETS), key=zone_order.index)
+
+    sorted_pids = sorted(all_pids, key=lambda pid: (zone_order.index(_worst(pid)), pos_order.get(player_data[pid]["position"], 99)))
+
+    header = (
+        '<thead><tr style="background:#F0F4FA;border-bottom:2px solid #D7E4F1">'
+        '<th style="padding:9px 14px;text-align:left;font-size:0.68rem;font-weight:800;color:#00529F;text-transform:uppercase;letter-spacing:0.8px;white-space:nowrap">Player</th>'
+        '<th style="padding:9px 14px;text-align:left;font-size:0.68rem;font-weight:800;color:#00529F;text-transform:uppercase;letter-spacing:0.8px">Position</th>'
+        + "".join(
+            f'<th style="padding:9px 14px;text-align:center;font-size:0.68rem;font-weight:800;color:#00529F;text-transform:uppercase;letter-spacing:0.8px">{t(f"target_{m}")}</th>'
+            for m in TARGETS
+        )
+        + '<th style="padding:9px 14px;text-align:center;font-size:0.68rem;font-weight:800;color:#00529F;text-transform:uppercase;letter-spacing:0.8px">Status</th>'
+        + '</tr></thead>'
     )
 
-    _position_order = {
-        "Full Back": 0,
-        "Central Back": 1,
-        "Central Midfielder": 2,
-        "Winger": 3,
-        "Forward": 4,
-        "Unknown": 99,
-    }
-    sorted_pids = sorted(all_pids, key=lambda pid: _position_order.get(player_data[pid]["position"], 99))
+    body = ""
+    for pid in sorted_pids:
+        pos     = t_pos(player_data[pid]["position"])
+        worst   = _worst(pid)
+        wcolor  = ZONE_COLORS[worst]
+        status_labels = {"danger": "HIGH RISK", "caution": "CAUTION", "optimal": "OK", "undertraining": "LOW", "unknown": "—"}
+        status  = status_labels.get(worst, "—")
 
-    zone_order = ["danger", "caution", "undertraining", "optimal", "unknown"]
-    player_cols = st.columns(4)
-    for index, pid in enumerate(sorted_pids):
-        pdata = player_data[pid]
-        acwr = current_acwr[pid]
-        worst_zone = min((acwr[metric]["zone"] for metric in TARGETS), key=zone_order.index)
+        cells = ""
+        for m in TARGETS:
+            z     = current_acwr[pid][m]["zone"]
+            val   = current_acwr[pid][m]["value"]
+            zc    = ZONE_COLORS[z]
+            vs    = f"{val:.2f}" if val is not None else "—"
+            cells += (
+                f'<td style="padding:9px 14px;text-align:center">'
+                f'<span style="font-family:Courier New,monospace;font-weight:700;font-size:0.88rem;color:{zc}">{vs}</span>'
+                f'<span style="display:block;font-size:0.6rem;font-weight:800;text-transform:uppercase;'
+                f'color:{zc};opacity:0.8;letter-spacing:0.4px">{t(f"zone_{z}")}</span>'
+                f'</td>'
+            )
 
-        rows_html = ""
-        for metric in TARGETS:
-            metric_acwr = acwr[metric]
-            color = ZONE_COLORS[metric_acwr["zone"]]
-            value_string = f"{metric_acwr['value']:.2f}" if metric_acwr["value"] is not None else "—"
-            rows_html += f"""
-            <div class="metric-row">
-                <span class="metric-lbl" style="color:{TARGET_META[metric]['color']}">{t(f"target_{metric}")}</span>
-                <div class="metric-rhs">
-                    <span class="metric-val" style="color:{color}">{value_string}</span>
-                    <span class="metric-badge" style="color:{color};border-color:{color};background:{color}18">
-                        {t(f"zone_{metric_acwr['zone']}")}
-                    </span>
-                </div>
-            </div>"""
+        body += (
+            f'<tr style="border-bottom:1px solid #EEF3FA">'
+            f'<td style="padding:9px 14px;font-family:Courier New,monospace;font-weight:700;color:#0F172A;font-size:0.88rem;white-space:nowrap">{pid}</td>'
+            f'<td style="padding:9px 14px;font-size:0.8rem;font-weight:600;color:#00529F;text-transform:uppercase;letter-spacing:0.4px;white-space:nowrap">{pos}</td>'
+            f'{cells}'
+            f'<td style="padding:9px 14px;text-align:center">'
+            f'<span style="font-size:0.65rem;font-weight:800;letter-spacing:0.5px;text-transform:uppercase;'
+            f'padding:3px 9px;border-radius:5px;border:1px solid {wcolor};color:{wcolor};background:{wcolor}12">{status}</span>'
+            f'</td>'
+            f'</tr>'
+        )
 
-        with player_cols[index % 4]:
-            st.markdown(f"""
-            <div class="player-card {worst_zone}">
-                <div class="card-id">{pid}</div>
-                <div class="card-pos">{t_pos(pdata['position'])}</div>
-                <hr class="card-rule">
-                {rows_html}
-            </div>""", unsafe_allow_html=True)
+    table_html = (
+        '<div style="overflow-x:auto;border:1px solid #D7E4F1;border-radius:12px;'
+        'box-shadow:0 2px 8px rgba(0,60,140,0.06);background:#FFFFFF;margin-bottom:1rem">'
+        f'<table style="width:100%;border-collapse:collapse;font-size:0.85rem">'
+        f'{header}<tbody>{body}</tbody>'
+        '</table></div>'
+    )
+    st.markdown(table_html, unsafe_allow_html=True)
 
 
 def _legacy_plan_days_to_events(plan_days: list[dict[str, bool]], plan_dates: list[pd.Timestamp]) -> list[dict[str, object]]:
@@ -695,34 +801,113 @@ def _render_forecast_results(
     )
 
     if forecast_is_stale:
-        st.warning(t("forecast_stale_warning"), icon="⚠️")
+        st.info(t("forecast_stale_warning"), icon="⚠️")
 
-    danger_entries: list[tuple[str, list[str]]] = []
+    plan_days: list[dict] = st.session_state.get("plan_days", [])
+
+    danger_entries: list[tuple[str, list[tuple[str, str | None, float | None, float | None]]]] = []
     for pid in all_pids:
-        bad_metrics = [
-            t(f"target_{metric}")
-            for metric in TARGETS
-            if forecast[str(pid)][metric]["day15_zone"] == "danger"
-        ]
+        bad_metrics = []
+        for metric in TARGETS:
+            mdata = forecast[str(pid)][metric]
+            first_danger_idx: int | None = next(
+                (i for i, (_, v) in enumerate(zip(mdata["fore_dates"], mdata["fore_acwr"])) if v is not None and v >= 1.5),
+                None,
+            )
+            if first_danger_idx is None:
+                continue
+            first_danger_date: str | None = mdata["fore_dates"][first_danger_idx]
+            first_danger_acwr: float | None = mdata["fore_acwr"][first_danger_idx]
+            bad_metrics.append((t(f"target_{metric}"), first_danger_date, first_danger_acwr, mdata["day15_acwr"]))
         if bad_metrics:
             danger_entries.append((str(pid), bad_metrics))
 
     if danger_entries:
+        import streamlit.components.v1 as components
+
         player_prefix = t("player_prefix")
-        rows = "".join(
-            f'<div style="margin-top:4px">&#x2022; {player_prefix} <strong>{player}</strong> — {", ".join(metrics)}</div>'
-            for player, metrics in danger_entries
+
+        # Split: still in danger at day 15 vs briefly entered then recovered
+        critical = [(p, m) for p, m in danger_entries if any(isinstance(a, float) and a >= 1.5 for _, _, _, a in m)]
+        recovered = [(p, m) for p, m in danger_entries if not any(isinstance(a, float) and a >= 1.5 for _, _, _, a in m)]
+
+        # Sort critical by worst first_acwr desc
+        critical.sort(key=lambda e: -max((a or 0.0) for _, _, a, _ in e[1]))
+
+        def _table_rows_html(entries: list) -> str:
+            rows = ""
+            for player, metrics in entries:
+                pos = t_pos(str(player_data[int(player)]["position"]))
+                for i, (name, date, first_acwr, day15_acwr) in enumerate(metrics):
+                    d15_color = "#EE324E" if (isinstance(day15_acwr, float) and day15_acwr >= 1.5) \
+                        else "#F59E0B" if (isinstance(day15_acwr, float) and day15_acwr >= 1.3) \
+                        else "#10B981"
+                    player_cell = (
+                        f'<td rowspan="{len(metrics)}" style="vertical-align:middle;border-right:1px solid #FEE2E2;padding:10px 14px;white-space:nowrap">'
+                        f'<div style="font-weight:800;font-family:Courier New,monospace;color:#0F172A;font-size:0.9rem">{player_prefix} {player}</div>'
+                        f'<div style="font-size:0.72rem;color:#00529F;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-top:2px">{pos}</div>'
+                        f'</td>'
+                    ) if i == 0 else ""
+                    fa = f"{first_acwr:.2f}" if isinstance(first_acwr, float) else "—"
+                    d15 = f"{day15_acwr:.2f}" if isinstance(day15_acwr, float) else "—"
+                    rows += (
+                        f'<tr style="border-bottom:1px solid #FEE2E2">'
+                        f'{player_cell}'
+                        f'<td style="padding:9px 14px;font-weight:700;color:#0F172A;font-size:0.84rem">{name}</td>'
+                        f'<td style="padding:9px 14px;white-space:nowrap">'
+                        f'<span style="font-weight:800;color:#EE324E">{date or "—"}</span>'
+                        f'<span style="font-family:Courier New,monospace;font-size:0.84rem;color:#EE324E;margin-left:5px">({fa})</span>'
+                        f'</td>'
+                        f'<td style="padding:9px 14px;text-align:center">'
+                        f'<span style="font-family:Courier New,monospace;font-weight:800;font-size:0.9rem;color:{d15_color}">{d15}</span>'
+                        f'</td>'
+                        f'</tr>'
+                    )
+            return rows
+
+        thead = (
+            '<thead><tr style="background:#FFF5F5;border-bottom:2px solid #FECACA">'
+            '<th style="padding:8px 14px;text-align:left;font-size:0.68rem;font-weight:800;color:#B91C3C;text-transform:uppercase;letter-spacing:0.8px;white-space:nowrap">Player</th>'
+            '<th style="padding:8px 14px;text-align:left;font-size:0.68rem;font-weight:800;color:#B91C3C;text-transform:uppercase;letter-spacing:0.8px">Metric</th>'
+            '<th style="padding:8px 14px;text-align:left;font-size:0.68rem;font-weight:800;color:#B91C3C;text-transform:uppercase;letter-spacing:0.8px;white-space:nowrap">Enters Danger</th>'
+            '<th style="padding:8px 14px;text-align:center;font-size:0.68rem;font-weight:800;color:#B91C3C;text-transform:uppercase;letter-spacing:0.8px;white-space:nowrap">Day 15</th>'
+            '</tr></thead>'
         )
-        st.markdown(
-            f"""
-            <div class="rm-alert">
-                <div>
-                    <strong>{t("injury_risk_alert")}:</strong> {t("injury_risk_msg").format(n=len(danger_entries))}
-                    {rows}
-                </div>
-            </div>""",
-            unsafe_allow_html=True,
+
+        recovered_names = ", ".join(
+            f"{player_prefix} {p}" for p, _ in recovered
         )
+
+        html_parts = [
+            '<div style="font-family:Inter,system-ui,sans-serif;border:1px solid #FECACA;border-left:4px solid #EE324E;'
+            'border-radius:10px;overflow:hidden;margin-bottom:4px;box-shadow:0 1px 6px rgba(238,50,78,0.08)">',
+            # Header
+            '<div style="background:#FFF5F5;padding:11px 16px;border-bottom:1px solid #FECACA;display:flex;align-items:center;gap:10px;flex-wrap:wrap">',
+            '<span style="font-size:0.95rem">&#9888;&#65039;</span>',
+            f'<span style="font-weight:800;color:#B91C3C;font-size:0.88rem;text-transform:uppercase;letter-spacing:0.6px">Injury Risk Alert</span>',
+            f'<span style="color:#64748B;font-size:0.8rem">— {len(critical)} player{"s" if len(critical)!=1 else ""} at risk by Day 15</span>',
+            '</div>',
+        ]
+
+        if critical:
+            html_parts += [
+                '<table style="width:100%;border-collapse:collapse;font-size:0.84rem;background:#fff">',
+                thead,
+                f'<tbody>{_table_rows_html(critical)}</tbody>',
+                '</table>',
+            ]
+
+        if recovered:
+            html_parts += [
+                f'<div style="background:#FFF5F5;padding:8px 16px;border-top:1px solid #FECACA;font-size:0.78rem;color:#64748B">'
+                f'<span style="font-weight:700;color:#B91C3C">Briefly entered danger (recovered by Day 15):</span> {recovered_names}'
+                f'</div>',
+            ]
+
+        html_parts.append('</div>')
+
+        total_h = 56 + (len(critical) * 3) * 40 + (60 if recovered else 0)
+        components.html("".join(html_parts), height=min(total_h, 520), scrolling=True)
 
     selector_col, status_col = st.columns([3, 2])
     player_prefix = t("player_prefix")
@@ -739,6 +924,8 @@ def _render_forecast_results(
             unsafe_allow_html=True,
         )
 
+    show_load = st.checkbox("Show load", key="forecast_show_load", value=False)
+
     for metric in TARGETS:
         meta = TARGET_META[metric]
         st.markdown(
@@ -747,7 +934,7 @@ def _render_forecast_results(
         )
         metric_forecast = forecast[selected_pid][metric]
         meta_translated = {**meta, "label": t(f"target_{metric}")}
-        fig = build_acwr_chart(metric_forecast, meta_translated)
+        fig = build_acwr_chart(metric_forecast, meta_translated, show_load=show_load)
         st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
     st.markdown("---")
@@ -935,6 +1122,7 @@ def page_planner() -> None:
             _run_forecast(plan_dates)
             st.rerun()
     with schedule_col:
+        st.markdown("<div style='margin-top:2.1rem'></div>", unsafe_allow_html=True)
         _render_schedule_sidebar(plan_dates, sort_events(st.session_state.plan_events), last_active)
 
     if st.session_state.get("planner_dialog_request") is not None:
@@ -985,15 +1173,6 @@ def render_sidebar(logo_path):
         )
         st.markdown("---")
 
-        st.markdown(f"""
-        <div style="padding:0.5rem 1rem 1rem;font-size:0.65rem;color:rgba(255,255,255,0.4);line-height:1.8">
-            <div style="font-weight:700;color:rgba(255,255,255,0.6);
-                        text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">
-                {t("sidebar_season")}
-            </div>
-            <div>{t("sidebar_players_metrics")}</div>
-            <div>EWMA · α<sub>acute</sub>=0.25 · α<sub>chronic</sub>≈0.07</div>
-        </div>""", unsafe_allow_html=True)
 
         team_logo_path = STATIC_DIR / "img" / "trAIn_labs.png"
         team_b64 = ""
